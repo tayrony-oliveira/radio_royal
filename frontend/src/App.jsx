@@ -113,9 +113,25 @@ export default function App() {
   const backgroundTrack = backgroundPlaylist[backgroundIndex];
   const mainTrack = mainPlaylist[mainIndex];
 
-  const ensureAudioContext = useCallback(() => {
-    mixer.ensureContext?.();
-  }, [mixer]);
+  const ensureAudioContext = useCallback(() => mixer.ensureContext?.(), [mixer]);
+
+  const awaitContextThen = useCallback(
+    (callback) => {
+      const result = ensureAudioContext();
+      if (result?.then) {
+        result
+          .catch((error) => {
+            console.warn('Falha ao iniciar o contexto de áudio.', error);
+          })
+          .finally(() => {
+            callback();
+          });
+      } else {
+        callback();
+      }
+    },
+    [ensureAudioContext]
+  );
 
   const handleAddTrack = useCallback((target, track) => {
     setPlaylists((previous) => {
@@ -155,31 +171,35 @@ export default function App() {
   }, []);
 
   const toggleBackgroundPlay = useCallback(() => {
-    ensureAudioContext();
-    setBackgroundPlaying((previous) => !previous);
-  }, [ensureAudioContext]);
+    awaitContextThen(() => {
+      setBackgroundPlaying((previous) => !previous);
+    });
+  }, [awaitContextThen]);
 
   const toggleMainPlay = useCallback(() => {
-    ensureAudioContext();
-    setMainPlaying((previous) => !previous);
-  }, [ensureAudioContext]);
+    awaitContextThen(() => {
+      setMainPlaying((previous) => !previous);
+    });
+  }, [awaitContextThen]);
 
   const selectBackgroundTrack = useCallback(
     (index) => {
-      ensureAudioContext();
-      setBackgroundIndex(index);
-      setBackgroundPlaying(true);
+      awaitContextThen(() => {
+        setBackgroundIndex(index);
+        setBackgroundPlaying(true);
+      });
     },
-    [ensureAudioContext]
+    [awaitContextThen]
   );
 
   const selectMainTrack = useCallback(
     (index) => {
-      ensureAudioContext();
-      setMainIndex(index);
-      setMainPlaying(true);
+      awaitContextThen(() => {
+        setMainIndex(index);
+        setMainPlaying(true);
+      });
     },
-    [ensureAudioContext]
+    [awaitContextThen]
   );
 
   const navigateTrack = useCallback((playlist, currentIndex, direction) => {
@@ -191,24 +211,32 @@ export default function App() {
   }, []);
 
   const nextBackground = useCallback(() => {
-    setBackgroundIndex((index) => navigateTrack(backgroundPlaylist, index, 1));
-    setBackgroundPlaying(true);
-  }, [backgroundPlaylist, navigateTrack]);
+    awaitContextThen(() => {
+      setBackgroundIndex((index) => navigateTrack(backgroundPlaylist, index, 1));
+      setBackgroundPlaying(true);
+    });
+  }, [awaitContextThen, backgroundPlaylist, navigateTrack]);
 
   const prevBackground = useCallback(() => {
-    setBackgroundIndex((index) => navigateTrack(backgroundPlaylist, index, -1));
-    setBackgroundPlaying(true);
-  }, [backgroundPlaylist, navigateTrack]);
+    awaitContextThen(() => {
+      setBackgroundIndex((index) => navigateTrack(backgroundPlaylist, index, -1));
+      setBackgroundPlaying(true);
+    });
+  }, [awaitContextThen, backgroundPlaylist, navigateTrack]);
 
   const nextMain = useCallback(() => {
-    setMainIndex((index) => navigateTrack(mainPlaylist, index, 1));
-    setMainPlaying(true);
-  }, [mainPlaylist, navigateTrack]);
+    awaitContextThen(() => {
+      setMainIndex((index) => navigateTrack(mainPlaylist, index, 1));
+      setMainPlaying(true);
+    });
+  }, [awaitContextThen, mainPlaylist, navigateTrack]);
 
   const prevMain = useCallback(() => {
-    setMainIndex((index) => navigateTrack(mainPlaylist, index, -1));
-    setMainPlaying(true);
-  }, [mainPlaylist, navigateTrack]);
+    awaitContextThen(() => {
+      setMainIndex((index) => navigateTrack(mainPlaylist, index, -1));
+      setMainPlaying(true);
+    });
+  }, [awaitContextThen, mainPlaylist, navigateTrack]);
 
   const statusMessages = useMemo(() => {
     if (mixer.contextError) {

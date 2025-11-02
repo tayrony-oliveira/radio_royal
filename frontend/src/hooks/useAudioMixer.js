@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const CONTEXT_NOT_SUPPORTED_ERROR = 'Web Audio API não é suportada neste navegador.';
+const SOURCE_NODE_KEY = '__radioRoyalSourceNode';
 
 export function useAudioMixer() {
   const contextRef = useRef(null);
@@ -102,15 +103,57 @@ export function useAudioMixer() {
           return;
         }
 
-        if (sourcesRef.current.has(element)) {
+        const gainNode = channel === 'background' ? backgroundGainRef.current : mainGainRef.current;
+        if (!gainNode) {
+          return;
+        }
+
+        const sources = sourcesRef.current;
+        let entry = sources.get(element);
+
+        if (!entry && element[SOURCE_NODE_KEY]) {
+          entry = {
+            node: element[SOURCE_NODE_KEY],
+            channel: null,
+            connected: false
+          };
+          sources.set(element, entry);
+        }
+
+        if (entry) {
+          const needsReconnect = entry.channel !== channel || !entry.connected;
+
+          if (!needsReconnect) {
+            return;
+          }
+
+          try {
+            entry.node.disconnect();
+          } catch (error) {
+            console.warn('Erro ao preparar reconexão da fonte de áudio', error);
+          }
+
+          try {
+            entry.node.connect(gainNode);
+            entry.channel = channel;
+            entry.connected = true;
+          } catch (error) {
+            console.error('Erro ao reconectar fonte de áudio', error);
+          }
+
           return;
         }
 
         try {
           const sourceNode = context.createMediaElementSource(element);
-          const gainNode = channel === 'background' ? backgroundGainRef.current : mainGainRef.current;
           sourceNode.connect(gainNode);
-          sourcesRef.current.set(element, sourceNode);
+          // armazena a referência para reaproveitar o nó nas próximas montagens
+          element[SOURCE_NODE_KEY] = sourceNode;
+          sources.set(element, {
+            node: sourceNode,
+            channel,
+            connected: true
+          });
         } catch (error) {
           console.error('Erro ao conectar elemento de áudio', error);
         }
@@ -119,13 +162,16 @@ export function useAudioMixer() {
       connect();
 
       return () => {
-        const sourceNode = sourcesRef.current.get(element);
-        if (sourceNode) {
+        const entry = sourcesRef.current.get(element);
+        if (entry?.connected) {
           try {
-            sourceNode.disconnect();
+            entry.node.disconnect();
           } catch (error) {
             console.warn('Erro ao desconectar fonte de áudio', error);
           }
+          entry.connected = false;
+        }
+        if (entry) {
           sourcesRef.current.delete(element);
         }
       };
@@ -179,11 +225,18 @@ export function useAudioMixer() {
 
   useEffect(() => {
     return () => {
-      sourcesRef.current.forEach((sourceNode) => {
+      sourcesRef.current.forEach((entry, element) => {
+        if (!entry?.node) {
+          return;
+        }
         try {
-          sourceNode.disconnect();
+          entry.node.disconnect();
         } catch (error) {
           console.warn('Erro ao desconectar fonte ao desmontar', error);
+        }
+        entry.connected = false;
+        if (element && element[SOURCE_NODE_KEY]) {
+          delete element[SOURCE_NODE_KEY];
         }
       });
       sourcesRef.current.clear();
