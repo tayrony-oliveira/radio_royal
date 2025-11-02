@@ -29,6 +29,9 @@ export default function PublicRadio() {
   const broadcast = metadata ?? fallback;
 
   const streamSource = broadcast.streamUrl?.trim() ? broadcast.streamUrl : fallback.streamUrl;
+  const playlist = Array.isArray(broadcast.playlist) && broadcast.playlist.length
+    ? broadcast.playlist
+    : [];
 
   return (
     <div className="bg-dark-subtle min-vh-100 public-radio">
@@ -97,25 +100,30 @@ export default function PublicRadio() {
             <div className="card border-0 shadow-sm h-100">
               <div className="card-body d-flex flex-column gap-4">
                 <div>
-                  <h2 className="h5 mb-1">Próximos destaques</h2>
+                  <h2 className="h5 mb-1">Na programação</h2>
                   <p className="text-muted mb-0">
-                    Programação sujeita a alterações ao vivo. Acompanhe nossas redes para saber mais.
+                    Acompanhe a fila configurada pelo estúdio em tempo real.
                   </p>
                 </div>
-                <ul className="list-group list-group-flush">
-                  <li className="list-group-item d-flex justify-content-between">
-                    <span>13h • Royal Hits</span>
-                    <span className="text-muted">Pop & Dance</span>
-                  </li>
-                  <li className="list-group-item d-flex justify-content-between">
-                    <span>16h • Sunset Lounge</span>
-                    <span className="text-muted">Lo-fi & Chillout</span>
-                  </li>
-                  <li className="list-group-item d-flex justify-content-between">
-                    <span>20h • Royal Sessions</span>
-                    <span className="text-muted">House ao vivo</span>
-                  </li>
-                </ul>
+                {playlist.length ? (
+                  <ul className="list-group list-group-flush">
+                    {playlist.map((item) => (
+                      <li
+                        key={item.id}
+                        className={`list-group-item d-flex justify-content-between align-items-center ${
+                          item.active ? 'list-group-item-primary fw-semibold' : ''
+                        }`}
+                      >
+                        <span className="text-truncate me-2">{item.title}</span>
+                        <span className={`badge ${item.active ? 'bg-primary text-white' : 'bg-secondary-subtle text-secondary'}`}>
+                          {item.active ? 'Agora' : 'Na fila'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted mb-0">Fila vazia no momento. Aguarde novidades do estúdio!</p>
+                )}
               </div>
             </div>
           </div>

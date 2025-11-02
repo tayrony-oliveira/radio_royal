@@ -143,6 +143,19 @@ export default function AdminDashboard() {
     }));
   }, [mainTrack?.id, mainTrack?.title, mainTrack?.url, updateMetadata]);
 
+  useEffect(() => {
+    const queue = mainPlaylist.map((track, index) => ({
+      id: track.id,
+      title: track.title,
+      url: track.url,
+      active: index === mainIndex
+    }));
+    updateMetadata((previous) => ({
+      ...previous,
+      playlist: queue
+    }));
+  }, [mainPlaylist, mainIndex, updateMetadata]);
+
   const ensureAudioContext = useCallback(() => mixer.ensureContext?.(), [mixer]);
 
   const awaitContextThen = useCallback(

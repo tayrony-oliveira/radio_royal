@@ -9,6 +9,7 @@ const DEFAULT_BROADCAST = Object.freeze({
   streamUrl: '/musica-principal.mp3',
   chatEmbedUrl: '',
   sourceUrl: '',
+  playlist: [],
   updatedAt: null
 });
 
