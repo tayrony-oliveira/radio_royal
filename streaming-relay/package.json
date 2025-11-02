@@ -1,0 +1,13 @@
+{
+  "name": "radio-royal-relay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Relay WebSocket server that forwards MediaRecorder audio to Owncast via FFmpeg",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.17.0"
+  }
+}

@@ -8,11 +8,10 @@ const DEFAULT_BROADCAST = Object.freeze({
   hostName: '',
   programName: '',
   streamUrl: '',
-  autoStreamUrl: '',
   chatEmbedUrl: '',
   sourceUrl: '',
   playlist: [],
-  isPlaying: false,
+  isLive: false,
   updatedAt: null
 });
 

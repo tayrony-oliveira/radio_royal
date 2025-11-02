@@ -4,6 +4,7 @@ import AudioPlayer from './components/AudioPlayer.jsx';
 import MicrophoneControl from './components/MicrophoneControl.jsx';
 import MixOutput from './components/MixOutput.jsx';
 import PlaylistManager from './components/PlaylistManager.jsx';
+import StreamRelayControl from './components/StreamRelayControl.jsx';
 import YouTubePanel from './components/YouTubePanel.jsx';
 import { useAudioMixer } from './hooks/useAudioMixer.js';
 import { DEMO_TRACKS } from './data/demoTracks.js';
@@ -132,23 +133,18 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!mainTrack) {
       updateMetadata((prev) => ({
+        ...prev,
         trackTitle: 'Nenhuma faixa em reprodução',
-        sourceUrl: '',
-        autoStreamUrl: '',
-        isPlaying: false
+        sourceUrl: ''
       }));
       return;
     }
     updateMetadata((prev) => ({
+      ...prev,
       trackTitle: mainTrack.title,
-      sourceUrl: mainTrack.url,
-      autoStreamUrl: mainTrack.url,
-      isPlaying: mainPlaying,
-      streamUrl: prev.streamUrl || '',
-      hostName: prev.hostName,
-      programName: prev.programName
+      sourceUrl: mainTrack.url
     }));
-  }, [mainTrack?.id, mainTrack?.title, mainTrack?.url, mainPlaying, updateMetadata]);
+  }, [mainTrack?.id, mainTrack?.title, mainTrack?.url, updateMetadata]);
 
   useEffect(() => {
     const queue = mainPlaylist.map((track, index) => ({
@@ -312,6 +308,16 @@ export default function AdminDashboard() {
     });
   };
 
+  const handleLiveStateChange = useCallback(
+    (live) => {
+      updateMetadata((prev) => ({
+        ...prev,
+        isLive: live
+      }));
+    },
+    [updateMetadata]
+  );
+
   return (
     <div className="bg-light min-vh-100">
       <nav className="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
@@ -401,6 +407,8 @@ export default function AdminDashboard() {
             </form>
           </div>
         </section>
+
+        <StreamRelayControl stream={mixer.mixStream} onLiveStateChange={handleLiveStateChange} />
 
         <main className="row g-4">
           <div className="col-12 col-lg-6">

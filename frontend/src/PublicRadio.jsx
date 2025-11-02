@@ -33,21 +33,9 @@ export default function PublicRadio() {
     ? broadcast.playlist
     : [];
 
-  const streamSource = (() => {
-    if (broadcast.isPlaying && broadcast.autoStreamUrl) {
-      return broadcast.autoStreamUrl;
-    }
-    if (broadcast.streamUrl?.trim()) {
-      return broadcast.streamUrl;
-    }
-    if (fallback.autoStreamUrl) {
-      return fallback.autoStreamUrl;
-    }
-    if (fallback.streamUrl?.trim()) {
-      return fallback.streamUrl;
-    }
-    return '';
-  })();
+  const streamSource = broadcast.streamUrl?.trim()
+    ? broadcast.streamUrl.trim()
+    : fallback.streamUrl?.trim() || '';
 
   const audioRef = useRef(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
@@ -78,7 +66,7 @@ export default function PublicRadio() {
       player.load?.();
     }
 
-    if (broadcast.isPlaying) {
+    if (broadcast.isLive) {
       const attemptPlay = () =>
         player
           .play()
@@ -119,7 +107,7 @@ export default function PublicRadio() {
         cleanupInteraction();
       }
     };
-  }, [streamSource, broadcast.isPlaying]);
+  }, [streamSource, broadcast.isLive]);
 
   return (
     <div className="bg-dark-subtle min-vh-100 public-radio">
