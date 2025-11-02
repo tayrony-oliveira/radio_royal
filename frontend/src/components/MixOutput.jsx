@@ -8,6 +8,20 @@ export default function MixOutput({ stream }) {
       return;
     }
     audioRef.current.srcObject = stream || null;
+    if (stream) {
+      const element = audioRef.current;
+      const tryPlay = () => {
+        element
+          .play()
+          .then(() => {
+            element.removeEventListener('click', tryPlay);
+          })
+          .catch(() => {
+            element.addEventListener('click', tryPlay, { once: true });
+          });
+      };
+      tryPlay();
+    }
   }, [stream]);
 
   return (

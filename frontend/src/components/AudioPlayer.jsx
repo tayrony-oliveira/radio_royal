@@ -50,8 +50,8 @@ const AudioPlayer = forwardRef(function AudioPlayer(
       if (playing) {
         audioRef.current
           .play()
-          .catch(() => {
-            /* autoplay blocked */
+          .catch((error) => {
+            console.warn('Falha ao iniciar reprodução da faixa.', error);
           });
       }
     } else {
@@ -70,8 +70,8 @@ const AudioPlayer = forwardRef(function AudioPlayer(
     } else {
       audioRef.current
         .play()
-        .catch(() => {
-          /* autoplay blocked */
+        .catch((error) => {
+          console.warn('Falha ao iniciar reprodução da faixa.', error);
         });
     }
   }, [playing]);
