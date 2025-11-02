@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'radio-royal-broadcast';
+const CHANNEL_NAME = 'radio-royal-broadcast-channel';
 
 const DEFAULT_BROADCAST = Object.freeze({
   trackTitle: 'Nenhuma faixa em reprodução',
@@ -35,6 +36,9 @@ function loadStoredBroadcast() {
 
 export function useBroadcastMetadata() {
   const [metadata, setMetadata] = useState(() => loadStoredBroadcast());
+  const channelRef = useRef(null);
+  const isInitialRenderRef = useRef(true);
+  const suppressBroadcastRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -45,6 +49,67 @@ export function useBroadcastMetadata() {
     } catch (error) {
       console.warn('Não foi possível salvar os dados de transmissão.', error);
     }
+  }, [metadata]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleStorage = (event) => {
+      if (event.key !== STORAGE_KEY) {
+        return;
+      }
+      setMetadata(loadStoredBroadcast());
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) {
+      return undefined;
+    }
+
+    const channel = new BroadcastChannel(CHANNEL_NAME);
+    channelRef.current = channel;
+    channel.onmessage = (event) => {
+      if (!event?.data) {
+        return;
+      }
+      const { type, payload } = event.data;
+      if (type === 'broadcast:update' && payload) {
+        suppressBroadcastRef.current = true;
+        setMetadata((previous) => ({ ...previous, ...payload }));
+      } else if (type === 'broadcast:replace' && payload) {
+        suppressBroadcastRef.current = true;
+        setMetadata({ ...DEFAULT_BROADCAST, ...payload });
+      }
+    };
+
+    return () => {
+      channel.close();
+      channelRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isInitialRenderRef.current) {
+      isInitialRenderRef.current = false;
+      return;
+    }
+    if (suppressBroadcastRef.current) {
+      suppressBroadcastRef.current = false;
+      return;
+    }
+    if (!channelRef.current) {
+      return;
+    }
+    channelRef.current.postMessage({ type: 'broadcast:replace', payload: metadata });
   }, [metadata]);
 
   const updateMetadata = useCallback((patch) => {
