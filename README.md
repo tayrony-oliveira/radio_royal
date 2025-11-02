@@ -59,6 +59,32 @@ npm run preview
 
 O repositório inclui um relay mínimo em Node.js que recebe o `MediaStream` gerado no painel administrativo e o envia para o Owncast (ou qualquer destino RTMP) utilizando o FFmpeg.
 
+### Execução integrada (Owncast + relay + frontend)
+
+Para subir todo o stack de desenvolvimento com um único comando, use o script utilitário:
+
+```bash
+./scripts/run-stack.sh
+```
+
+Ele irá:
+
+- Garantir que as dependências do frontend e do relay estejam instaladas;
+- Iniciar o Owncast local com uma stream key temporária (`royal-demo`, personalizável via `STREAM_KEY`);
+- Publicar o relay WebSocket apontando para o Owncast (`RTMP_URL` pode ser sobrescrita);
+- Iniciar o frontend (Vite) nas rotas pública (`/`) e administrativa (`/admin`).
+
+Variáveis úteis:
+
+- `STREAM_KEY` — define a chave de transmissão temporária do Owncast (padrão `royal-demo`);
+- `OWNCAST_WEB_IP`, `OWNCAST_WEB_PORT`, `RELAY_PORT`, `FRONTEND_PORT` — IP/portas dos serviços (por padrão Owncast em `0.0.0.0:8080`, relay em `8081`, frontend em `5173`);
+- `FFMPEG_BIN` — caminho alternativo para o binário do FFmpeg;
+- `RTMP_URL` — URL completa de ingest (sobrepõe a montagem automática `rtmp://127.0.0.1:1935/live/<STREAM_KEY>`);
+- `VIDEO_RESOLUTION`, `VIDEO_FRAME_RATE`, `VIDEO_COLOR` etc. — ajustes do quadro gerado automaticamente para satisfazer o Owncast (veja `streaming-relay/server.js`).
+- `MEDIA_CHUNK_INTERVAL_MS` — intervalo padrão (em ms) dos blocos enviados pelo navegador ao relay (padrão `500`, respeita o mínimo configurável no painel).
+
+Ao finalizar, pressione `Ctrl+C` para encerrar todos os serviços — os logs são gravados em `.runtime/logs/`.
+
 1. **Prepare o Owncast** (ou outro servidor compatível com RTMP) e anote:
    - URL de ingestão RTMP, por exemplo `rtmp://meuservidor/live/stream-key`;
    - URL pública do player (HLS), por exemplo `https://meuservidor/hls/stream.m3u8`.

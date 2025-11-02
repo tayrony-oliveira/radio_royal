@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PublicChat from './components/PublicChat.jsx';
 import { getStoredBroadcast, useBroadcastMetadata } from './hooks/useBroadcastMetadata.js';
@@ -24,18 +24,126 @@ function formatRelativeTime(timestamp) {
   return `há ${days} dia${days > 1 ? 's' : ''}`;
 }
 
+const DEFAULT_HLS_PATH = import.meta.env?.VITE_OWNCAST_HLS_PATH || '/hls/stream.m3u8';
+const DEFAULT_OWNCAST_PORT = import.meta.env?.VITE_OWNCAST_WEB_PORT || '8080';
+
+function getDefaultStreamUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  const host = window.location.hostname;
+  return `http://${host}:${DEFAULT_OWNCAST_PORT}${DEFAULT_HLS_PATH}`;
+}
+
+function normalizeStreamUrl(rawUrl) {
+  if (!rawUrl) {
+    return '';
+  }
+
+  if (typeof window === 'undefined') {
+    return rawUrl;
+  }
+
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    const loopbackHosts = new Set([
+      'localhost',
+      '127.0.0.1',
+      '0.0.0.0',
+      '::1',
+      '[::1]'
+    ]);
+
+    if (loopbackHosts.has(parsed.hostname)) {
+      const replacementHost = window.location.hostname;
+      if (replacementHost && !loopbackHosts.has(replacementHost)) {
+        parsed.hostname = replacementHost;
+      }
+    }
+
+    return parsed.toString();
+  } catch (error) {
+    console.warn('Não foi possível normalizar a URL do stream público.', error);
+    return rawUrl;
+  }
+}
+
 export default function PublicRadio() {
   const { metadata } = useBroadcastMetadata();
   const fallback = getStoredBroadcast();
   const broadcast = metadata ?? fallback;
 
+  const [owncastStatus, setOwncastStatus] = useState(null);
+
   const playlist = Array.isArray(broadcast.playlist) && broadcast.playlist.length
     ? broadcast.playlist
     : [];
 
-  const streamSource = broadcast.streamUrl?.trim()
+  const rawStreamUrl = broadcast.streamUrl?.trim()
     ? broadcast.streamUrl.trim()
-    : fallback.streamUrl?.trim() || '';
+    : fallback.streamUrl?.trim() || getDefaultStreamUrl();
+
+  const streamSource = useMemo(
+    () => normalizeStreamUrl(rawStreamUrl),
+    [rawStreamUrl]
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return () => {};
+    }
+
+    let isMounted = true;
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const host = window.location.hostname;
+    const statusUrl = `${protocol}//${host}:${DEFAULT_OWNCAST_PORT}/api/status`;
+
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch(statusUrl, { cache: 'no-store' });
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        if (isMounted) {
+          setOwncastStatus(data);
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('Falha ao consultar status do Owncast.', error);
+        }
+      }
+    };
+
+    fetchStatus();
+    const intervalId = window.setInterval(fetchStatus, 10000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const isLive = owncastStatus?.online ?? broadcast.isLive;
+
+  const embedUrl = useMemo(() => {
+    if (!streamSource || typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      const parsed = new URL(streamSource, window.location.origin);
+      if (!parsed.pathname.startsWith('/hls/')) {
+        return '';
+      }
+      parsed.pathname = '/embed/video';
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.toString();
+    } catch (error) {
+      console.warn('Não foi possível derivar a URL de incorporação do Owncast.', error);
+      return '';
+    }
+  }, [streamSource]);
 
   const audioRef = useRef(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
@@ -66,7 +174,7 @@ export default function PublicRadio() {
       player.load?.();
     }
 
-    if (broadcast.isLive) {
+    if (isLive) {
       const attemptPlay = () =>
         player
           .play()
@@ -107,7 +215,7 @@ export default function PublicRadio() {
         cleanupInteraction();
       }
     };
-  }, [streamSource, broadcast.isLive]);
+  }, [isLive, streamSource]);
 
   return (
     <div className="bg-dark-subtle min-vh-100 public-radio">
@@ -157,19 +265,32 @@ export default function PublicRadio() {
                 <div className="card-body">
                   <h2 className="h5 text-dark">Ouça agora</h2>
                   <p className="text-muted">
-                    Clique em play para acompanhar a transmissão ao vivo.
+                    {isLive ? 'Transmissão ao vivo!' : 'Aguardando início da transmissão...'}
                   </p>
-                  {streamSource ? (
-                    <audio ref={audioRef} controls className="w-100" preload="none" data-stream-source="" />
+                  {isLive && embedUrl ? (
+                    <div className="ratio ratio-16x9">
+                      <iframe
+                        src={embedUrl}
+                        title="Owncast"
+                        allowFullScreen
+                        allow="autoplay; picture-in-picture"
+                        style={{ backgroundColor: '#000' }}
+                      />
+                    </div>
                   ) : (
-                    <div className="alert alert-warning mb-0">
-                      Aguarde enquanto o estúdio inicia a transmissão.
+                    <div className="alert alert-info mb-0">
+                      O estúdio está offline no momento. Aguarde o início da próxima transmissão!
                     </div>
                   )}
-                  {autoplayBlocked && (
-                    <p className="text-warning small mt-2 mb-0">
-                      Clique no player para liberar o áudio da transmissão.
-                    </p>
+                  {streamSource && (
+                    <div className="mt-3">
+                      <audio ref={audioRef} controls className="w-100" preload="none" data-stream-source="" />
+                      {autoplayBlocked && (
+                        <p className="text-warning small mt-2 mb-0">
+                          Clique no player para liberar o áudio da transmissão.
+                        </p>
+                      )}
+                    </div>
                   )}
                   {broadcast.sourceUrl && (
                     <p className="text-muted small mt-2 mb-0">

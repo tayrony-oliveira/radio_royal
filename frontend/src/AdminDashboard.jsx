@@ -380,10 +380,10 @@ export default function AdminDashboard() {
                   type="url"
                   value={streamUrl}
                   onChange={(event) => setStreamUrl(event.target.value)}
-                  placeholder="https://"
+                  placeholder={`http://${window.location.hostname}:8080/hls/stream.m3u8`}
                 />
                 <small className="text-muted">
-                  Informe o endpoint do seu encoder/servidor Icecast ou HLS.
+                  URL do stream HLS do Owncast (tipicamente http://seuservidor:8080/hls/stream.m3u8)
                 </small>
               </div>
               <div className="col-md-6">

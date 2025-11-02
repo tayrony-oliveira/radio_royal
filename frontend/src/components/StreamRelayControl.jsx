@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'radio-royal-relay-settings';
+const DEFAULT_CHUNK_INTERVAL =
+  Number(
+    typeof import.meta !== 'undefined'
+      ? import.meta.env?.VITE_MEDIA_CHUNK_INTERVAL_MS
+      : undefined
+  ) || 500;
 
 function loadStoredSettings() {
+  // Default to the current host but with relay port
+  const defaultUrl = typeof window !== 'undefined' 
+    ? `ws://${window.location.hostname}:8081`
+    : 'ws://localhost:8081';
+
   if (typeof window === 'undefined') {
     return {
-      relayUrl: 'ws://localhost:8081',
-      chunkInterval: 1000
+      relayUrl: defaultUrl,
+      chunkInterval: DEFAULT_CHUNK_INTERVAL
     };
   }
   try {
     const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY));
     return {
-      relayUrl: stored?.relayUrl || 'ws://localhost:8081',
-      chunkInterval: stored?.chunkInterval || 1000
+      relayUrl: stored?.relayUrl || defaultUrl,
+      chunkInterval: stored?.chunkInterval || DEFAULT_CHUNK_INTERVAL
     };
   } catch (error) {
     return {
-      relayUrl: 'ws://localhost:8081',
-      chunkInterval: 1000
+      relayUrl: defaultUrl,
+      chunkInterval: DEFAULT_CHUNK_INTERVAL
     };
   }
 }
@@ -154,9 +165,22 @@ export default function StreamRelayControl({ stream, onLiveStateChange }) {
         onLiveStateChange(false);
       });
 
+      ws.addEventListener('message', (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'error') {
+            console.error('[relay] Erro reportado:', message.message);
+            setError(`Erro no relay: ${message.message}`);
+            cleanupStreaming();
+          }
+        } catch (e) {
+          // Ignore non-JSON messages (binary data)
+        }
+      });
+
       ws.addEventListener('error', (event) => {
         console.error('Falha na conexão com o relay.', event);
-        setError('Falha na conexão com o relay. Verifique o endereço e tente novamente.');
+        setError(`Falha na conexão com o relay (${settings.relayUrl}). Verifique se o servidor está rodando e o endereço está correto.`);
         cleanupStreaming();
       });
     } catch (error) {
