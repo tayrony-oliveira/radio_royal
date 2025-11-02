@@ -1,100 +1,110 @@
 import { useState } from 'react';
 
-const emptyForm = {
-  title: '',
-  url: '',
-  target: 'background'
-};
-
-export default function PlaylistManager({ playlists, onAddTrack, onRemoveTrack }) {
-  const [form, setForm] = useState(emptyForm);
+export default function PlaylistManager({
+  title,
+  playlist,
+  onAddTrack,
+  onRemoveTrack,
+  onSelectTrack,
+  activeId,
+  ctaLabel = 'Adicionar faixa'
+}) {
+  const [form, setForm] = useState({ title: '', url: '' });
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!form.title || !form.url) {
+    if (!form.title.trim() || !form.url.trim()) {
       return;
     }
-    onAddTrack(form.target, {
-      title: form.title,
-      url: form.url
+    onAddTrack({
+      title: form.title.trim(),
+      url: form.url.trim()
     });
-    setForm(emptyForm);
+    setForm({ title: '', url: '' });
   };
 
   return (
-    <section className="card h-100 border-0 shadow-sm">
-      <div className="card-body d-flex flex-column gap-4">
+    <div className="studio-playlist">
+      <div className="studio-playlist__header">
         <div>
-          <h2 className="h5 mb-3">Gerenciar Playlists</h2>
-          <form onSubmit={handleSubmit} className="row g-3">
-            <div className="col-12">
-              <label className="form-label fw-semibold">Título</label>
-              <input
-                type="text"
-                className="form-control"
-                value={form.title}
-                onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                required
-              />
-            </div>
-            <div className="col-12">
-              <label className="form-label fw-semibold">URL (MP3 ou streaming com CORS liberado)</label>
-              <input
-                type="url"
-                className="form-control"
-                value={form.url}
-                placeholder="https://"
-                onChange={(event) => setForm((prev) => ({ ...prev, url: event.target.value }))}
-                required
-              />
-            </div>
-            <div className="col-12 col-md-6">
-              <label className="form-label fw-semibold">Destino</label>
-              <select
-                className="form-select"
-                value={form.target}
-                onChange={(event) => setForm((prev) => ({ ...prev, target: event.target.value }))}
-              >
-                <option value="background">Player de fundo</option>
-                <option value="main">Player principal</option>
-              </select>
-            </div>
-            <div className="col-12 col-md-6 d-flex align-items-end">
-              <button type="submit" className="btn btn-primary w-100">
-                Adicionar faixa
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <div className="row g-3">
-          {['background', 'main'].map((key) => (
-            <div key={key} className="col-12 col-md-6">
-              <h3 className="h6">
-                {key === 'background' ? 'Playlist de fundo' : 'Playlist principal'}
-              </h3>
-              {playlists[key].length ? (
-                <div className="list-group">
-                  {playlists[key].map((track) => (
-                    <div key={track.id} className="list-group-item d-flex justify-content-between align-items-center">
-                      <span className="me-2 text-truncate">{track.title}</span>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-danger"
-                        onClick={() => onRemoveTrack(key, track.id)}
-                      >
-                        Remover
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted mb-0">Nenhuma faixa cadastrada.</p>
-              )}
-            </div>
-          ))}
+          <h3 className="studio-playlist__title">{title}</h3>
+          <p className="studio-playlist__subtitle">
+            Insira faixas diretas (MP3/AAC) com CORS liberado para mixagem em tempo real.
+          </p>
         </div>
       </div>
-    </section>
+
+      <form className="studio-playlist__form" onSubmit={handleSubmit}>
+        <label className="studio-label">
+          Título
+          <input
+            className="studio-input"
+            value={form.title}
+            onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+            placeholder="Nome da faixa"
+            required
+          />
+        </label>
+        <label className="studio-label">
+          URL (MP3/stream)
+          <input
+            className="studio-input"
+            type="url"
+            value={form.url}
+            onChange={(event) => setForm((prev) => ({ ...prev, url: event.target.value }))}
+            placeholder="https://"
+            required
+          />
+        </label>
+        <button type="submit" className="btn btn-primary studio-playlist__submit">
+          {ctaLabel}
+        </button>
+      </form>
+
+      {playlist.length ? (
+        <ul className="studio-playlist__list">
+          {playlist.map((track, index) => {
+            const isActive = activeId && activeId === track.id;
+            return (
+              <li
+                key={track.id}
+                className={`studio-playlist__item ${isActive ? 'studio-playlist__item--active' : ''}`}
+              >
+                <div className="studio-playlist__meta">
+                  <span className="studio-playlist__index">{String(index + 1).padStart(2, '0')}</span>
+                  <div className="studio-playlist__info">
+                    <strong>{track.title}</strong>
+                    <span>{track.url}</span>
+                  </div>
+                </div>
+                <div className="studio-playlist__actions">
+                  {onSelectTrack ? (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => onSelectTrack(index)}
+                    >
+                      Tocar
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-outline-light"
+                    onClick={() => onRemoveTrack(track.id)}
+                  >
+                    Remover
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="studio-playlist__empty">
+          <strong>Nenhuma faixa cadastrada.</strong>
+          Adicione tracks para este canal e deixe tudo preparado para o próximo bloco.
+        </div>
+      )}
+    </div>
   );
 }

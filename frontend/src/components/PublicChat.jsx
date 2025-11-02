@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const STORAGE_KEY = 'radio-royal-public-chat';
-
-const friendlyNames = ['Visitante', 'Ouvinte', 'Royal Fan', 'Convidado'];
+const friendlyNames = ['Visitante', 'Ouvinte', 'Royal Fan', 'Convidado', 'Night Owl'];
 
 function loadMessages() {
   if (typeof window === 'undefined') {
@@ -37,7 +36,10 @@ export default function PublicChat() {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
 
-  const defaultName = useMemo(() => friendlyNames[Math.floor(Math.random() * friendlyNames.length)], []);
+  const defaultName = useMemo(
+    () => friendlyNames[Math.floor(Math.random() * friendlyNames.length)],
+    []
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -62,7 +64,7 @@ export default function PublicChat() {
       content: message.trim(),
       createdAt: new Date().toISOString()
     };
-    setMessages((previous) => [payload, ...previous].slice(0, 50));
+    setMessages((previous) => [payload, ...previous].slice(0, 60));
     setMessage('');
     if (!name.trim()) {
       setName(displayName);
@@ -70,58 +72,63 @@ export default function PublicChat() {
   };
 
   return (
-    <div className="card h-100 border-0 shadow-sm">
-      <div className="card-body d-flex flex-column gap-3">
+    <div className="public-chat">
+      <header className="public-chat__header">
         <div>
-          <h2 className="h5 mb-1">Chat da audiência</h2>
-          <p className="text-muted mb-0">Converse com outros ouvintes em tempo real.</p>
+          <h2>Chat da audiência</h2>
+          <p>As mensagens ficam apenas neste dispositivo. Participe do papo ao vivo!</p>
         </div>
+        <span className="public-chat__counter">
+          {messages.length ? `${messages.length} mensagens armazenadas` : 'Sem mensagens'}
+        </span>
+      </header>
 
-        <form className="row g-2" onSubmit={handleSubmit}>
-          <div className="col-12 col-md-4">
-            <label className="form-label fw-semibold">Seu nome</label>
+      <form className="public-chat__form" onSubmit={handleSubmit}>
+        <div className="public-chat__field">
+          <label>Seu nome</label>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={defaultName}
+            className="public-chat__input"
+          />
+        </div>
+        <div className="public-chat__field public-chat__field--message">
+          <label>Mensagem</label>
+          <div className="public-chat__input-wrapper">
             <input
-              className="form-control"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={defaultName}
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="Envie um alô para a rádio"
+              maxLength={160}
+              className="public-chat__input"
             />
+            <button type="submit" className="btn btn-primary">
+              Enviar
+            </button>
           </div>
-          <div className="col-12 col-md-8">
-            <label className="form-label fw-semibold">Mensagem</label>
-            <div className="d-flex gap-2">
-              <input
-                className="form-control"
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                placeholder="Envie um alô para a rádio"
-                maxLength={140}
-              />
-              <button type="submit" className="btn btn-primary flex-shrink-0">
-                Enviar
-              </button>
-            </div>
-            <small className="text-muted">As mensagens ficam apenas neste navegador.</small>
-          </div>
-        </form>
-
-        <div className="public-chat__log border rounded p-3 bg-light overflow-auto">
-          {messages.length ? (
-            <ul className="list-unstyled mb-0 d-flex flex-column gap-2">
-              {messages.map((entry) => (
-                <li key={entry.id} className="bg-white rounded shadow-sm p-2">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <strong>{entry.author}</strong>
-                    <small className="text-muted">{formatTimestamp(entry.createdAt)}</small>
-                  </div>
-                  <p className="mb-0">{entry.content}</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted mb-0">Nenhuma mensagem ainda. Seja o primeiro a comentar!</p>
-          )}
         </div>
+      </form>
+
+      <div className="public-chat__log">
+        {messages.length ? (
+          <ul className="public-chat__messages">
+            {messages.map((entry) => (
+              <li key={entry.id} className="public-chat__message">
+                <div className="public-chat__message-meta">
+                  <strong>{entry.author}</strong>
+                  <span>{formatTimestamp(entry.createdAt)}</span>
+                </div>
+                <p>{entry.content}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="public-chat__empty">
+            <strong>Nenhuma mensagem ainda.</strong>
+            Seja o primeiro a comentar e contar pra gente de onde está ouvindo!
+          </div>
+        )}
       </div>
     </div>
   );

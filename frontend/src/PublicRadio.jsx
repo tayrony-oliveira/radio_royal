@@ -88,6 +88,21 @@ export default function PublicRadio() {
     [rawStreamUrl]
   );
 
+  const streamHost = useMemo(() => {
+    if (!streamSource) {
+      return '';
+    }
+    if (typeof window === 'undefined') {
+      return streamSource;
+    }
+    try {
+      return new URL(streamSource, window.location.origin).host;
+    } catch (error) {
+      console.warn('Falha ao derivar host da URL do stream.', error);
+      return streamSource;
+    }
+  }, [streamSource]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return () => {};
@@ -125,6 +140,7 @@ export default function PublicRadio() {
   }, []);
 
   const isLive = owncastStatus?.online ?? broadcast.isLive;
+  const liveLabel = isLive ? 'Ao vivo agora' : 'Estúdio offline';
 
   const embedUrl = useMemo(() => {
     if (!streamSource || typeof window === 'undefined') {
@@ -147,6 +163,12 @@ export default function PublicRadio() {
 
   const audioRef = useRef(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+
+  const highlights = [
+    { title: 'Siga no Instagram', description: '@radio_royal' },
+    { title: 'WhatsApp da rádio', description: '(11) 99999-0000' },
+    { title: 'Envie sua faixa', description: 'demo@radioroyal.fm' }
+  ];
 
   useEffect(() => {
     const player = audioRef.current;
@@ -218,171 +240,181 @@ export default function PublicRadio() {
   }, [isLive, streamSource]);
 
   return (
-    <div className="bg-dark-subtle min-vh-100 public-radio">
-      <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
-        <div className="container">
-          <span className="navbar-brand fw-semibold">Radio Royal</span>
-          <div className="d-flex gap-2">
+    <div className="public-shell">
+      <header className="public-header">
+        <div className="container-xl public-header__inner">
+          <div className="public-logo">
+            <span className="public-logo__brand">Radio Royal</span>
+            <span className="public-logo__tag">Broadcast</span>
+          </div>
+          <div className="public-header__actions">
+            <a className="btn-ghost" href={streamSource} target="_blank" rel="noreferrer">
+              Ouvir no próprio player
+            </a>
             <Link to="/admin" className="btn btn-outline-light btn-sm">
               Área administrativa
             </Link>
           </div>
         </div>
-      </nav>
+      </header>
 
-      <main className="container py-5 d-flex flex-column gap-4">
-        <section className="public-hero text-white">
-          <div className="row align-items-center g-4">
-            <div className="col-12 col-lg-6">
-              <h1 className="display-6 fw-semibold">Agora na Royal</h1>
-              <p className="lead mb-4">{broadcast.programName || 'Programação ao vivo'}</p>
-              <div className="card border-0 bg-dark bg-opacity-25 text-white mb-4">
-                <div className="card-body d-flex flex-column gap-2">
-                  <span className="text-uppercase small text-white-50">Faixa atual</span>
-                  <strong className="fs-4">{broadcast.trackTitle}</strong>
-                  {broadcast.hostName ? (
-                    <span className="text-white-50">Com {broadcast.hostName}</span>
-                  ) : (
-                    <span className="text-white-50">Apresentação automática</span>
-                  )}
-                  <small className="text-white-50">
-                    Atualizado {formatRelativeTime(broadcast.updatedAt)}
-                  </small>
-                </div>
+      <main className="container-xl public-main">
+        <section className="public-hero-grid" aria-label="Status da transmissão">
+          <article className="hero-card hero-card--live">
+            <span className={`live-pill ${isLive ? '' : 'offline'}`}>
+              {isLive ? 'Ao vivo' : 'Offline'}
+            </span>
+            <h1 className="hero-card__title">{broadcast.trackTitle}</h1>
+            <p className="hero-card__subtitle">{broadcast.programName || 'Programação ao vivo'}</p>
+            <div className="hero-card__meta">
+              <div className="hero-card__meta-item">
+                <span>Apresentação</span>
+                <strong>{broadcast.hostName || 'Automação Royal'}</strong>
               </div>
-              <div className="d-flex align-items-center gap-3">
-                <a className="btn btn-primary btn-lg" href={streamSource} target="_blank" rel="noreferrer">
-                  Abrir stream em outra janela
-                </a>
-                <div className="d-flex flex-column">
-                  <span className="small text-white-50">URL do stream</span>
-                  <code className="text-white-50 small text-wrap">{streamSource}</code>
-                </div>
+              <div className="hero-card__meta-item">
+                <span>Atualizado</span>
+                <strong>{formatRelativeTime(broadcast.updatedAt)}</strong>
+              </div>
+              <div className="audio-bars" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
               </div>
             </div>
-            <div className="col-12 col-lg-6">
-              <div className="card border-0 shadow-lg public-player">
-                <div className="card-body">
-                  <h2 className="h5 text-dark">Ouça agora</h2>
-                  <p className="text-muted">
-                    {isLive ? 'Transmissão ao vivo!' : 'Aguardando início da transmissão...'}
-                  </p>
-                  {isLive && embedUrl ? (
-                    <div className="ratio ratio-16x9">
-                      <iframe
-                        src={embedUrl}
-                        title="Owncast"
-                        allowFullScreen
-                        allow="autoplay; picture-in-picture"
-                        style={{ backgroundColor: '#000' }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="alert alert-info mb-0">
-                      O estúdio está offline no momento. Aguarde o início da próxima transmissão!
-                    </div>
-                  )}
-                  {streamSource && (
-                    <div className="mt-3">
-                      <audio ref={audioRef} controls className="w-100" preload="none" data-stream-source="" />
-                      {autoplayBlocked && (
-                        <p className="text-warning small mt-2 mb-0">
-                          Clique no player para liberar o áudio da transmissão.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {broadcast.sourceUrl && (
-                    <p className="text-muted small mt-2 mb-0">
-                      Fonte atual: <code>{broadcast.sourceUrl}</code>
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+          </article>
 
-        <section className="row g-4">
-          <div className="col-12 col-lg-7">
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-body d-flex flex-column gap-4">
-                <div>
-                  <h2 className="h5 mb-1">Na programação</h2>
-                  <p className="text-muted mb-0">
-                    Acompanhe a fila configurada pelo estúdio em tempo real.
+          <article className="hero-card">
+            <h2 className="hero-card__subtitle">{liveLabel}</h2>
+            <p>
+              {isLive
+                ? 'Conecte-se agora à transmissão com latência ultrabaixa direto do nosso estúdio.'
+                : 'Estamos preparando o próximo bloco. Deixe a aba aberta para ser notificado quando começarmos.'}
+            </p>
+            {isLive && embedUrl ? (
+              <div className="public-embed">
+                <iframe
+                  src={embedUrl}
+                  title="Transmissão Owncast"
+                  allowFullScreen
+                  allow="autoplay; picture-in-picture"
+                  style={{ border: 0, width: '100%', height: '100%' }}
+                />
+              </div>
+            ) : (
+              <div className="public-empty" role="status">
+                <strong>Estúdio offline</strong>
+                Aguardando o início da transmissão. Fique por perto!
+              </div>
+            )}
+            {streamSource && (
+              <div className="public-player-audio">
+                <audio ref={audioRef} controls preload="none" data-stream-source="" />
+                {autoplayBlocked && (
+                  <p className="text-warning small mt-2 mb-0">
+                    Toque no player para liberar o áudio no seu dispositivo.
                   </p>
-                </div>
-                {playlist.length ? (
-                  <ul className="list-group list-group-flush">
-                    {playlist.map((item) => (
-                      <li
-                        key={item.id}
-                        className={`list-group-item d-flex justify-content-between align-items-center ${
-                          item.active ? 'list-group-item-primary fw-semibold' : ''
-                        }`}
-                      >
-                        <span className="text-truncate me-2">{item.title}</span>
-                        <span className={`badge ${item.active ? 'bg-primary text-white' : 'bg-secondary-subtle text-secondary'}`}>
-                          {item.active ? 'Agora' : 'Na fila'}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted mb-0">Fila vazia no momento. Aguarde novidades do estúdio!</p>
                 )}
               </div>
+            )}
+            {broadcast.sourceUrl && (
+              <p className="studio-small mb-0">
+                Fonte atual: <code>{broadcast.sourceUrl}</code>
+              </p>
+            )}
+          </article>
+
+          <article className="hero-card hero-card--meta">
+            <h2 className="hero-card__subtitle">Acessos rápidos</h2>
+            <div className="hero-card__meta">
+              <div className="hero-card__meta-item">
+                <span>URL do stream</span>
+                <strong>{streamHost || 'Indefinido'}</strong>
+              </div>
+              <div className="hero-card__meta-item">
+                <span>Copiar link</span>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    if (typeof navigator !== 'undefined' && navigator.clipboard && streamSource) {
+                      navigator.clipboard.writeText(streamSource).catch(() => {});
+                    }
+                  }}
+                >
+                  Copiar URL HLS
+                </button>
+              </div>
+              <a className="btn btn-primary" href={streamSource} target="_blank" rel="noreferrer">
+                Abrir stream em outra janela
+              </a>
             </div>
-          </div>
-          <div className="col-12 col-lg-5">
+          </article>
+        </section>
+
+        <section className="public-grid" id="programacao">
+          <article className="public-card">
+            <h2>Na programação</h2>
+            <p>Acompanhe a fila configurada pelo estúdio em tempo real.</p>
+            {playlist.length ? (
+              <ul className="public-timeline">
+                {playlist.map((item) => (
+                  <li
+                    key={item.id}
+                    className={`public-timeline__item ${item.active ? 'active' : ''}`}
+                  >
+                    <span className="public-timeline__marker" aria-hidden="true" />
+                    <div className="public-timeline__content">
+                      <p className="public-timeline__title">{item.title}</p>
+                      <span className="public-timeline__badge">
+                        {item.active ? 'No ar' : 'Na fila'}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="public-empty">
+                <strong>Nenhuma faixa agendada</strong>
+                Aguarde novidades do estúdio. Atualizamos a fila o tempo todo!
+              </div>
+            )}
+          </article>
+
+          <article className="public-card">
+            <h2>Converse com a gente</h2>
+            <p>Participe ao vivo enviando suas mensagens e pedindo suas faixas preferidas.</p>
             {broadcast.chatEmbedUrl ? (
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body d-flex flex-column gap-3">
-                  <div>
-                    <h2 className="h5 mb-1">Chat incorporado</h2>
-                    <p className="text-muted mb-0">Interaja diretamente no serviço escolhido.</p>
-                  </div>
-                  <div className="ratio ratio-16x9">
-                    <iframe title="Chat da transmissão" src={broadcast.chatEmbedUrl} allow="autoplay; clipboard-write" />
-                  </div>
-                </div>
+              <div className="public-embed" style={{ aspectRatio: '9 / 16' }}>
+                <iframe
+                  title="Chat da transmissão"
+                  src={broadcast.chatEmbedUrl}
+                  allow="autoplay; clipboard-write; encrypted-media"
+                  style={{ border: 0, width: '100%', height: '100%' }}
+                />
               </div>
             ) : (
               <PublicChat />
             )}
-          </div>
+          </article>
         </section>
 
-        <section className="card border-0 shadow-sm">
-          <div className="card-body">
-            <h2 className="h5 mb-3">Fique por dentro</h2>
-            <div className="row g-3">
-              <div className="col-md-4">
-                <div className="public-highlight p-3 rounded">
-                  <h3 className="h6">Siga no Instagram</h3>
-                  <p className="mb-0 text-muted">@radio_royal</p>
-                </div>
+        <section className="public-card">
+          <h2>Fique por perto</h2>
+          <p>Escolha o seu canal favorito para acompanhar todas as novidades da Royal.</p>
+          <div className="public-highlight-grid">
+            {highlights.map((highlight) => (
+              <div className="public-highlight-card" key={highlight.title}>
+                <h3>{highlight.title}</h3>
+                <span>{highlight.description}</span>
               </div>
-              <div className="col-md-4">
-                <div className="public-highlight p-3 rounded">
-                  <h3 className="h6">WhatsApp da rádio</h3>
-                  <p className="mb-0 text-muted">(11) 99999-0000</p>
-                </div>
-              </div>
-              <div className="col-md-4">
-                <div className="public-highlight p-3 rounded">
-                  <h3 className="h6">Envie sua faixa</h3>
-                  <p className="mb-0 text-muted">demo@radioroyal.fm</p>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </section>
       </main>
 
-      <footer className="bg-dark text-white-50 py-4">
-        <div className="container d-flex flex-column flex-lg-row justify-content-between gap-2">
+      <footer className="public-footer">
+        <div className="container-xl public-footer__inner">
           <span>© {new Date().getFullYear()} Radio Royal. Todos os direitos reservados.</span>
           <span>Produção independente • Streaming ao vivo 24/7</span>
         </div>

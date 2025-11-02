@@ -223,6 +223,14 @@ export function useAudioMixer() {
       return microphoneStreamRef.current;
     }
 
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      throw new Error('Este navegador não oferece suporte a captura de microfone.');
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const source = context.createMediaStreamSource(stream);
