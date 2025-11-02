@@ -1,0 +1,6 @@
+node_modules/
+.runtime/
+frontend/dist/
+*.log
+*.DS_Store
+owncast/
