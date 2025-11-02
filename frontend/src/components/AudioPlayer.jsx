@@ -42,8 +42,10 @@ const AudioPlayer = forwardRef(function AudioPlayer(
     }
 
     if (track) {
-      if (audioRef.current.src !== track.url) {
+      const currentSrc = audioRef.current.getAttribute('src');
+      if (currentSrc !== track.url) {
         audioRef.current.src = track.url;
+        audioRef.current.load();
       }
       if (playing) {
         audioRef.current

@@ -5,29 +5,13 @@ import MixOutput from './components/MixOutput.jsx';
 import PlaylistManager from './components/PlaylistManager.jsx';
 import YouTubePanel from './components/YouTubePanel.jsx';
 import { useAudioMixer } from './hooks/useAudioMixer.js';
+import { DEMO_TRACKS } from './data/demoTracks.js';
 
 const STORAGE_KEY = 'radio-royal-settings';
 
 const DEFAULT_PLAYLISTS = {
-  background: [
-    {
-      id: 'bg-1',
-      title: 'SoundHelix #1',
-      url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
-    },
-    {
-      id: 'bg-2',
-      title: 'SoundHelix #2',
-      url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
-    }
-  ],
-  main: [
-    {
-      id: 'main-1',
-      title: 'SoundHelix #3',
-      url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
-    }
-  ]
+  background: [DEMO_TRACKS.background],
+  main: [DEMO_TRACKS.main]
 };
 
 function ensureIds(tracks) {
