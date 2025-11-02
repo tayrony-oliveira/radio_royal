@@ -26,3 +26,31 @@ body {
 .audio-progress__time {
   font-variant-numeric: tabular-nums;
 }
+
+.public-hero {
+  background: linear-gradient(135deg, rgba(13, 110, 253, 0.8), rgba(111, 66, 193, 0.85));
+  border-radius: 1.5rem;
+  padding: 3rem;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.15);
+}
+
+.public-player audio {
+  border-radius: 0.75rem;
+  background: #f8f9fa;
+  padding: 0.25rem;
+}
+
+.public-highlight {
+  background: rgba(13, 110, 253, 0.08);
+  border: 1px solid rgba(13, 110, 253, 0.15);
+}
+
+.public-chat__log {
+  max-height: 320px;
+}
+
+.public-radio .navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+}
