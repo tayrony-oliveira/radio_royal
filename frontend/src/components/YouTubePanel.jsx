@@ -43,42 +43,53 @@ export default function YouTubePanel() {
   };
 
   return (
-    <section className="youtube-panel">
-      <h2>YouTube (somente monitoramento)</h2>
-      <p>
-        O player abaixo utiliza a YouTube IFrame API. Eventos de play/pause são capturados para que
-        você integre o estado da transmissão. O áudio do YouTube não pode ser roteado para o mix por
-        limitações de CORS.
-      </p>
-      <label>
-        URL ou ID do vídeo
-        <input value={inputValue} onChange={(event) => setInputValue(event.target.value)} />
-      </label>
-      {videoUrl ? (
-        <ReactPlayer
-          className="youtube-panel__player"
-          url={videoUrl}
-          controls
-          playing={false}
-          onPlay={() => appendEvent('play')}
-          onPause={() => appendEvent('pause')}
-        />
-      ) : (
-        <p>Informe uma URL ou ID válido do YouTube.</p>
-      )}
-      <div className="youtube-panel__events">
-        <h3>Eventos recentes</h3>
-        {events.length ? (
-          <ul>
-            {events.map((event) => (
-              <li key={event.id}>
-                <strong>{event.type}</strong> - {event.timestamp}
-              </li>
-            ))}
-          </ul>
+    <section className="card h-100 border-0 shadow-sm">
+      <div className="card-body d-flex flex-column gap-3">
+        <div>
+          <h2 className="h5 mb-2">YouTube (somente monitoramento)</h2>
+          <p className="text-muted mb-0">
+            O player abaixo utiliza a YouTube IFrame API. Eventos de play/pause são capturados para
+            que você integre o estado da transmissão. O áudio do YouTube não pode ser roteado para o
+            mix por limitações de CORS.
+          </p>
+        </div>
+        <div>
+          <label className="form-label fw-semibold">URL ou ID do vídeo</label>
+          <input
+            className="form-control"
+            value={inputValue}
+            onChange={(event) => setInputValue(event.target.value)}
+          />
+        </div>
+        {videoUrl ? (
+          <div className="ratio ratio-16x9">
+            <ReactPlayer
+              className="w-100 h-100"
+              url={videoUrl}
+              controls
+              playing={false}
+              onPlay={() => appendEvent('play')}
+              onPause={() => appendEvent('pause')}
+            />
+          </div>
         ) : (
-          <p>Nenhum evento registrado.</p>
+          <p className="text-muted mb-0">Informe uma URL ou ID válido do YouTube.</p>
         )}
+        <div>
+          <h3 className="h6">Eventos recentes</h3>
+          {events.length ? (
+            <ul className="list-group">
+              {events.map((event) => (
+                <li key={event.id} className="list-group-item d-flex justify-content-between">
+                  <strong className="text-capitalize">{event.type}</strong>
+                  <span className="text-muted">{event.timestamp}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted mb-0">Nenhum evento registrado.</p>
+          )}
+        </div>
       </div>
     </section>
   );

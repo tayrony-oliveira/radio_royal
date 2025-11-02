@@ -78,13 +78,34 @@ export function useAudioMixer() {
   }, []);
 
   const ensureContext = useCallback(async () => {
-    const context = createContextGraph();
+    let context = createContextGraph();
     if (!context) {
       return null;
     }
 
+    if (context.state === 'closed') {
+      contextRef.current = null;
+      setIsContextReady(false);
+      sourcesRef.current.clear();
+      context = createContextGraph();
+      if (!context) {
+        return null;
+      }
+    }
+
     if (context.state === 'suspended') {
-      await context.resume();
+      try {
+        await context.resume();
+        setContextError(null);
+      } catch (error) {
+        if (error?.name === 'NotAllowedError') {
+          setContextError('Clique em qualquer controle para liberar o áudio.');
+          return context;
+        }
+        console.warn('Falha ao retomar o AudioContext.', error);
+        setContextError('Não foi possível iniciar o áudio. Tente novamente.');
+        return null;
+      }
     }
 
     return context;
