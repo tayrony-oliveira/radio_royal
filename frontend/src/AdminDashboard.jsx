@@ -133,15 +133,22 @@ export default function AdminDashboard() {
     if (!mainTrack) {
       updateMetadata((prev) => ({
         trackTitle: 'Nenhuma faixa em reprodução',
-        sourceUrl: prev.sourceUrl
+        sourceUrl: '',
+        autoStreamUrl: '',
+        isPlaying: false
       }));
       return;
     }
-    updateMetadata(() => ({
+    updateMetadata((prev) => ({
       trackTitle: mainTrack.title,
-      sourceUrl: mainTrack.url
+      sourceUrl: mainTrack.url,
+      autoStreamUrl: mainTrack.url,
+      isPlaying: mainPlaying,
+      streamUrl: prev.streamUrl || '',
+      hostName: prev.hostName,
+      programName: prev.programName
     }));
-  }, [mainTrack?.id, mainTrack?.title, mainTrack?.url, updateMetadata]);
+  }, [mainTrack?.id, mainTrack?.title, mainTrack?.url, mainPlaying, updateMetadata]);
 
   useEffect(() => {
     const queue = mainPlaylist.map((track, index) => ({

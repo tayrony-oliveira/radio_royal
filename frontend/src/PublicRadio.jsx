@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PublicChat from './components/PublicChat.jsx';
 import { getStoredBroadcast, useBroadcastMetadata } from './hooks/useBroadcastMetadata.js';
@@ -28,10 +29,97 @@ export default function PublicRadio() {
   const fallback = getStoredBroadcast();
   const broadcast = metadata ?? fallback;
 
-  const streamSource = broadcast.streamUrl?.trim() ? broadcast.streamUrl : fallback.streamUrl;
   const playlist = Array.isArray(broadcast.playlist) && broadcast.playlist.length
     ? broadcast.playlist
     : [];
+
+  const streamSource = (() => {
+    if (broadcast.isPlaying && broadcast.autoStreamUrl) {
+      return broadcast.autoStreamUrl;
+    }
+    if (broadcast.streamUrl?.trim()) {
+      return broadcast.streamUrl;
+    }
+    if (fallback.autoStreamUrl) {
+      return fallback.autoStreamUrl;
+    }
+    if (fallback.streamUrl?.trim()) {
+      return fallback.streamUrl;
+    }
+    return '';
+  })();
+
+  const audioRef = useRef(null);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+
+  useEffect(() => {
+    const player = audioRef.current;
+    if (!player) {
+      return () => {};
+    }
+
+    let cleanupInteraction = null;
+
+    if (!streamSource) {
+      player.pause();
+      player.removeAttribute('src');
+      player.load?.();
+      setAutoplayBlocked(false);
+      return () => {};
+    }
+
+    if (!player.crossOrigin) {
+      player.crossOrigin = 'anonymous';
+    }
+
+    if (player.dataset.streamSource !== streamSource) {
+      player.src = streamSource;
+      player.dataset.streamSource = streamSource;
+      player.load?.();
+    }
+
+    if (broadcast.isPlaying) {
+      const attemptPlay = () =>
+        player
+          .play()
+          .then(() => {
+            setAutoplayBlocked(false);
+          })
+          .catch((error) => {
+            if (error?.name === 'NotAllowedError') {
+              setAutoplayBlocked(true);
+              const unlock = () => {
+                player
+                  .play()
+                  .then(() => {
+                    setAutoplayBlocked(false);
+                  })
+                  .catch(() => {});
+              };
+              window.addEventListener('click', unlock, { once: true });
+              window.addEventListener('keydown', unlock, { once: true });
+              window.addEventListener('touchstart', unlock, { once: true });
+              cleanupInteraction = () => {
+                window.removeEventListener('click', unlock);
+                window.removeEventListener('keydown', unlock);
+                window.removeEventListener('touchstart', unlock);
+              };
+            } else {
+              console.warn('Falha ao reproduzir stream público.', error);
+            }
+          });
+
+      attemptPlay();
+    } else {
+      player.pause();
+    }
+
+    return () => {
+      if (cleanupInteraction) {
+        cleanupInteraction();
+      }
+    };
+  }, [streamSource, broadcast.isPlaying]);
 
   return (
     <div className="bg-dark-subtle min-vh-100 public-radio">
@@ -83,7 +171,18 @@ export default function PublicRadio() {
                   <p className="text-muted">
                     Clique em play para acompanhar a transmissão ao vivo.
                   </p>
-                  <audio controls className="w-100" preload="none" src={streamSource} />
+                  {streamSource ? (
+                    <audio ref={audioRef} controls className="w-100" preload="none" data-stream-source="" />
+                  ) : (
+                    <div className="alert alert-warning mb-0">
+                      Aguarde enquanto o estúdio inicia a transmissão.
+                    </div>
+                  )}
+                  {autoplayBlocked && (
+                    <p className="text-warning small mt-2 mb-0">
+                      Clique no player para liberar o áudio da transmissão.
+                    </p>
+                  )}
                   {broadcast.sourceUrl && (
                     <p className="text-muted small mt-2 mb-0">
                       Fonte atual: <code>{broadcast.sourceUrl}</code>

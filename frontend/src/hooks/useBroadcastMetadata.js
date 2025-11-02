@@ -6,10 +6,12 @@ const DEFAULT_BROADCAST = Object.freeze({
   trackTitle: 'Nenhuma faixa em reprodução',
   hostName: '',
   programName: '',
-  streamUrl: '/musica-principal.mp3',
+  streamUrl: '',
+  autoStreamUrl: '',
   chatEmbedUrl: '',
   sourceUrl: '',
   playlist: [],
+  isPlaying: false,
   updatedAt: null
 });
 
