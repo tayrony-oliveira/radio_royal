@@ -253,81 +253,106 @@ export default function App() {
   }, [backgroundTrack, mainTrack, mixer.contextError]);
 
   return (
-    <div className="app">
-      <header className="app__header">
-        <h1>Radio Royal Mixer</h1>
-        <p>
-          Misture trilhas de fundo, faixas principais e microfone utilizando a Web Audio API.
-          Integre players externos e mantenha suas playlists salvas no navegador.
-        </p>
-      </header>
-      {statusMessages.length > 0 && (
-        <div className="app__status">
-          {statusMessages.map((message) => (
-            <p key={message}>{message}</p>
-          ))}
-        </div>
-      )}
-      <main className="app__layout">
-        <div className="app__column">
-          <AudioPlayer
-            title="Player de Fundo"
-            playlist={backgroundPlaylist}
-            currentTrackIndex={backgroundIndex}
-            onSelectTrack={selectBackgroundTrack}
-            playing={backgroundPlaying}
-            onTogglePlay={toggleBackgroundPlay}
-            volume={backgroundVolume}
-            onVolumeChange={setBackgroundVolume}
-            analyser={mixer.backgroundAnalyser}
-            registerElement={mixer.registerBackgroundElement}
-            onNextTrack={nextBackground}
-            onPreviousTrack={prevBackground}
-          />
-        </div>
-        <div className="app__column">
-          <AudioPlayer
-            title="Player Principal"
-            playlist={mainPlaylist}
-            currentTrackIndex={mainIndex}
-            onSelectTrack={selectMainTrack}
-            playing={mainPlaying}
-            onTogglePlay={toggleMainPlay}
-            volume={mainVolume}
-            onVolumeChange={setMainVolume}
-            analyser={mixer.mainAnalyser}
-            registerElement={mixer.registerMainElement}
-            onNextTrack={nextMain}
-            onPreviousTrack={prevMain}
-          />
-        </div>
-      </main>
-      <section className="app__secondary">
-        <MicrophoneControl
-          microphoneActive={mixer.microphoneActive}
-          connectMicrophone={mixer.connectMicrophone}
-          disconnectMicrophone={mixer.disconnectMicrophone}
-          volume={microphoneVolume}
-          onVolumeChange={setMicrophoneVolume}
-          analyser={mixer.microphoneAnalyser}
-        />
-        <MixOutput stream={mixer.mixStream} />
-      </section>
-      <section className="app__footer">
-        <PlaylistManager
-          playlists={playlists}
-          onAddTrack={handleAddTrack}
-          onRemoveTrack={handleRemoveTrack}
-        />
-        <YouTubePanel />
-      </section>
-      <footer className="app__credits">
-        <p>
-          Permissões de microfone e reprodução automática variam entre navegadores. Utilize URLs com
-          CORS habilitado para permitir roteamento de áudio. Conteúdo protegido por DRM não pode ser
-          mixado com a abordagem utilizada.
-        </p>
-      </footer>
+    <div className="bg-light min-vh-100 py-4">
+      <div className="container d-flex flex-column gap-4">
+        <header>
+          <div className="card border-0 shadow-sm">
+            <div className="card-body">
+              <h1 className="h3 mb-2">Radio Royal Mixer</h1>
+              <p className="mb-0 text-muted">
+                Misture trilhas de fundo, faixas principais e microfone utilizando a Web Audio API.
+                Integre players externos e mantenha suas playlists salvas no navegador.
+              </p>
+            </div>
+          </div>
+        </header>
+
+        {statusMessages.length > 0 && (
+          <div className="d-flex flex-column gap-2">
+            {statusMessages.map((message) => (
+              <div key={message} className="alert alert-warning mb-0" role="alert">
+                {message}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <main className="row g-4">
+          <div className="col-12 col-lg-6">
+            <AudioPlayer
+              title="Player de Fundo"
+              playlist={backgroundPlaylist}
+              currentTrackIndex={backgroundIndex}
+              onSelectTrack={selectBackgroundTrack}
+              playing={backgroundPlaying}
+              onTogglePlay={toggleBackgroundPlay}
+              volume={backgroundVolume}
+              onVolumeChange={setBackgroundVolume}
+              analyser={mixer.backgroundAnalyser}
+              registerElement={mixer.registerBackgroundElement}
+              onNextTrack={nextBackground}
+              onPreviousTrack={prevBackground}
+            />
+          </div>
+          <div className="col-12 col-lg-6">
+            <AudioPlayer
+              title="Player Principal"
+              playlist={mainPlaylist}
+              currentTrackIndex={mainIndex}
+              onSelectTrack={selectMainTrack}
+              playing={mainPlaying}
+              onTogglePlay={toggleMainPlay}
+              volume={mainVolume}
+              onVolumeChange={setMainVolume}
+              analyser={mixer.mainAnalyser}
+              registerElement={mixer.registerMainElement}
+              onNextTrack={nextMain}
+              onPreviousTrack={prevMain}
+            />
+          </div>
+        </main>
+
+        <section className="row g-4">
+          <div className="col-12 col-lg-4">
+            <MicrophoneControl
+              microphoneActive={mixer.microphoneActive}
+              connectMicrophone={mixer.connectMicrophone}
+              disconnectMicrophone={mixer.disconnectMicrophone}
+              volume={microphoneVolume}
+              onVolumeChange={setMicrophoneVolume}
+              analyser={mixer.microphoneAnalyser}
+            />
+          </div>
+          <div className="col-12 col-lg-8">
+            <MixOutput stream={mixer.mixStream} />
+          </div>
+        </section>
+
+        <section className="row g-4">
+          <div className="col-12 col-lg-6">
+            <PlaylistManager
+              playlists={playlists}
+              onAddTrack={handleAddTrack}
+              onRemoveTrack={handleRemoveTrack}
+            />
+          </div>
+          <div className="col-12 col-lg-6">
+            <YouTubePanel />
+          </div>
+        </section>
+
+        <footer>
+          <div className="card border-0 shadow-sm">
+            <div className="card-body">
+              <p className="mb-0 text-muted">
+                Permissões de microfone e reprodução automática variam entre navegadores. Utilize
+                URLs com CORS habilitado para permitir roteamento de áudio. Conteúdo protegido por
+                DRM não pode ser mixado com a abordagem utilizada.
+              </p>
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

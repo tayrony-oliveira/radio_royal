@@ -37,9 +37,11 @@ export default function LevelMeter({ analyser, label }) {
   }, [analyser]);
 
   return (
-    <div className="level-meter" aria-label={label} title={label}>
-      <div className="level-meter__bar" style={{ width: `${level}%` }} />
-      <span className="level-meter__value">{level}%</span>
+    <div className="d-flex align-items-center gap-2" aria-label={label} title={label}>
+      <div className="progress flex-grow-1 level-meter__progress" role="progressbar" aria-valuenow={level} aria-valuemin="0" aria-valuemax="100">
+        <div className="progress-bar level-meter__bar" style={{ width: `${level}%` }} />
+      </div>
+      <span className="text-muted small fw-semibold">{level}%</span>
     </div>
   );
 }
