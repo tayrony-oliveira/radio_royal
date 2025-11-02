@@ -24,6 +24,27 @@ function ensureIds(tracks) {
   }));
 }
 
+function formatRelativeTime(timestamp) {
+  if (!timestamp) {
+    return 'agora mesmo';
+  }
+  const date = new Date(timestamp);
+  const diffSeconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSeconds < 60) {
+    return 'agora mesmo';
+  }
+  if (diffSeconds < 3600) {
+    const minutes = Math.floor(diffSeconds / 60);
+    return `há ${minutes} minuto${minutes > 1 ? 's' : ''}`;
+  }
+  const hours = Math.floor(diffSeconds / 3600);
+  if (hours < 24) {
+    return `há ${hours} hora${hours > 1 ? 's' : ''}`;
+  }
+  const days = Math.floor(hours / 24);
+  return `há ${days} dia${days > 1 ? 's' : ''}`;
+}
+
 export default function AdminDashboard() {
   const mixer = useAudioMixer();
   const { metadata, updateMetadata } = useBroadcastMetadata();
@@ -44,6 +65,10 @@ export default function AdminDashboard() {
   const [programName, setProgramName] = useState(metadata.programName || '');
   const [streamUrl, setStreamUrl] = useState(metadata.streamUrl || '');
   const [chatEmbedUrl, setChatEmbedUrl] = useState(metadata.chatEmbedUrl || '');
+  const hostnamePlaceholder = useMemo(
+    () => (typeof window !== 'undefined' ? window.location.hostname : 'localhost'),
+    []
+  );
 
   useEffect(() => {
     setHostName(metadata.hostName || '');
@@ -319,171 +344,273 @@ export default function AdminDashboard() {
   );
 
   return (
-    <div className="bg-light min-vh-100">
-      <nav className="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
-        <div className="container">
-          <span className="navbar-brand fw-semibold">Radio Royal • Painel</span>
-          <div className="d-flex gap-2">
-            <Link to="/" className="btn btn-outline-primary btn-sm">
+    <div className="studio-app">
+      <aside className="studio-sidebar">
+        <div className="studio-logo">
+          <strong>Radio Royal</strong>
+          <span>Studio</span>
+        </div>
+        <nav className="studio-sidebar__nav">
+          <a className="studio-sidebar__link" href="#public-info">
+            Metadados públicos
+          </a>
+          <a className="studio-sidebar__link" href="#broadcast">
+            Transmissão Owncast
+          </a>
+          <a className="studio-sidebar__link" href="#players">
+            Mixer & Players
+          </a>
+          <a className="studio-sidebar__link" href="#microphone">
+            Microfone & Saída
+          </a>
+          <a className="studio-sidebar__link" href="#playlists">
+            Playlists
+          </a>
+          <a className="studio-sidebar__link" href="#extras">
+            YouTube & notas
+          </a>
+        </nav>
+        <div className="studio-sidebar__status">
+          <span>Status: <strong>{metadata.isLive ? 'Transmitindo' : 'Offline'}</strong></span>
+          <span>Última atualização: {formatRelativeTime(metadata.updatedAt)}</span>
+        </div>
+      </aside>
+
+      <div className="studio-main">
+        <header className="studio-header">
+          <div className="container-xl studio-header__inner">
+            <div>
+              <h1 className="studio-title">Central do estúdio</h1>
+              <p className="studio-subtitle">
+                Ajuste players, microfone e transmissão Owncast em tempo real sem sair do navegador.
+              </p>
+            </div>
+            <Link to="/" className="btn btn-outline-light btn-sm">
               Ver página pública
             </Link>
           </div>
-        </div>
-      </nav>
-      <div className="container py-4 d-flex flex-column gap-4">
-        <div className="card border-0 shadow-sm">
-          <div className="card-body">
-            <h1 className="h4 mb-2">Radio Royal Mixer</h1>
-            <p className="mb-0 text-muted">
-              Misture trilhas de fundo, faixas principais e microfone utilizando a Web Audio API.
-              Integre players externos e mantenha suas playlists salvas no navegador.
-            </p>
-          </div>
-        </div>
+        </header>
 
-        {statusMessages.length > 0 && (
-          <div className="d-flex flex-column gap-2">
-            {statusMessages.map((message) => (
-              <div key={message} className="alert alert-warning mb-0" role="alert">
-                {message}
+        <div className="studio-content container-xl">
+          {statusMessages.length > 0 && (
+            <div className="studio-alerts" role="status">
+              {statusMessages.map((message) => (
+                <div key={message} className="studio-alert">
+                  {message}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <section id="public-info" className="studio-section">
+            <div className="studio-section__header">
+              <div>
+                <h2 className="studio-section__title">Informações públicas</h2>
+                <p className="studio-section__description">
+                  Campos exibidos na página da rádio e nos players externos conectados.
+                </p>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
 
-        <section className="card border-0 shadow-sm">
-          <div className="card-body">
-            <h2 className="h5 mb-3">Informações públicas da transmissão</h2>
-            <form className="row g-3" onSubmit={handleMetadataSubmit}>
-              <div className="col-md-6">
-                <label className="form-label fw-semibold">Nome do locutor</label>
+            <form className="studio-form-grid" onSubmit={handleMetadataSubmit}>
+              <label className="studio-label">
+                Nome do locutor
                 <input
-                  className="form-control"
+                  className="studio-input"
                   value={hostName}
                   onChange={(event) => setHostName(event.target.value)}
                   placeholder="Ex.: Dj Tay"
                 />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label fw-semibold">Programa ou quadro</label>
+              </label>
+              <label className="studio-label">
+                Programa ou quadro
                 <input
-                  className="form-control"
+                  className="studio-input"
                   value={programName}
                   onChange={(event) => setProgramName(event.target.value)}
                   placeholder="Ex.: Royal Hits"
                 />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label fw-semibold">URL do stream público</label>
+              </label>
+              <label className="studio-label">
+                URL do stream público
                 <input
-                  className="form-control"
+                  className="studio-input"
                   type="url"
                   value={streamUrl}
                   onChange={(event) => setStreamUrl(event.target.value)}
-                  placeholder={`http://${window.location.hostname}:8080/hls/stream.m3u8`}
+                  placeholder={`http://${hostnamePlaceholder}:8080/hls/stream.m3u8`}
                 />
-                <small className="text-muted">
-                  URL do stream HLS do Owncast (tipicamente http://seuservidor:8080/hls/stream.m3u8)
-                </small>
-              </div>
-              <div className="col-md-6">
-                <label className="form-label fw-semibold">URL do chat incorporado (opcional)</label>
+                <span className="studio-small">
+                  Endereço HLS entregue pelo Owncast (ex.: http://servidor:8080/hls/stream.m3u8).
+                </span>
+              </label>
+              <label className="studio-label">
+                URL do chat incorporado (opcional)
                 <input
-                  className="form-control"
+                  className="studio-input"
                   type="url"
                   value={chatEmbedUrl}
                   onChange={(event) => setChatEmbedUrl(event.target.value)}
                   placeholder="https://iframe.chat/"
                 />
-                <small className="text-muted">
-                  Caso utilize um serviço externo (por exemplo, YouTube ou Discord), adicione o link de incorporação.
-                </small>
-              </div>
-              <div className="col-12 text-end">
+                <span className="studio-small">
+                  YouTube, Twitch, Discord ou qualquer serviço que ofereça um iframe público.
+                </span>
+              </label>
+              <div className="studio-actions">
                 <button type="submit" className="btn btn-primary">
                   Atualizar página pública
                 </button>
               </div>
             </form>
-          </div>
-        </section>
+          </section>
 
-        <StreamRelayControl stream={mixer.mixStream} onLiveStateChange={handleLiveStateChange} />
-
-        <main className="row g-4">
-          <div className="col-12 col-lg-6">
-            <AudioPlayer
-              title="Player de Fundo"
-              playlist={backgroundPlaylist}
-              currentTrackIndex={backgroundIndex}
-              onSelectTrack={selectBackgroundTrack}
-              playing={backgroundPlaying}
-              onTogglePlay={toggleBackgroundPlay}
-              volume={backgroundVolume}
-              onVolumeChange={setBackgroundVolume}
-              analyser={mixer.backgroundAnalyser}
-              registerElement={mixer.registerBackgroundElement}
-              onNextTrack={nextBackground}
-              onPreviousTrack={prevBackground}
-            />
-          </div>
-          <div className="col-12 col-lg-6">
-            <AudioPlayer
-              title="Player Principal"
-              playlist={mainPlaylist}
-              currentTrackIndex={mainIndex}
-              onSelectTrack={selectMainTrack}
-              playing={mainPlaying}
-              onTogglePlay={toggleMainPlay}
-              volume={mainVolume}
-              onVolumeChange={setMainVolume}
-              analyser={mixer.mainAnalyser}
-              registerElement={mixer.registerMainElement}
-              onNextTrack={nextMain}
-              onPreviousTrack={prevMain}
-            />
-          </div>
-        </main>
-
-        <section className="row g-4">
-          <div className="col-12 col-lg-4">
-            <MicrophoneControl
-              microphoneActive={mixer.microphoneActive}
-              connectMicrophone={mixer.connectMicrophone}
-              disconnectMicrophone={mixer.disconnectMicrophone}
-              volume={microphoneVolume}
-              onVolumeChange={setMicrophoneVolume}
-              analyser={mixer.microphoneAnalyser}
-            />
-          </div>
-          <div className="col-12 col-lg-8">
-            <MixOutput stream={mixer.mixStream} />
-          </div>
-        </section>
-
-        <section className="row g-4">
-          <div className="col-12 col-lg-6">
-            <PlaylistManager
-              playlists={playlists}
-              onAddTrack={handleAddTrack}
-              onRemoveTrack={handleRemoveTrack}
-            />
-          </div>
-          <div className="col-12 col-lg-6">
-            <YouTubePanel />
-          </div>
-        </section>
-
-        <footer>
-          <div className="card border-0 shadow-sm">
-            <div className="card-body">
-              <p className="mb-0 text-muted">
-                Permissões de microfone e reprodução automática variam entre navegadores. Utilize
-                URLs com CORS habilitado para permitir roteamento de áudio. Conteúdo protegido por
-                DRM não pode ser mixado com a abordagem utilizada.
-              </p>
+          <section id="broadcast" className="studio-section">
+            <div className="studio-section__header">
+              <div>
+                <h2 className="studio-section__title">Transmissão Owncast</h2>
+                <p className="studio-section__description">
+                  Configure o relay WebSocket, acompanhe os logs do FFmpeg e mantenha a ingestão estável.
+                </p>
+              </div>
             </div>
-          </div>
+            <StreamRelayControl stream={mixer.mixStream} onLiveStateChange={handleLiveStateChange} />
+          </section>
+
+          <section id="players" className="studio-section">
+            <div className="studio-section__header">
+              <div>
+                <h2 className="studio-section__title">Mixer digital</h2>
+                <p className="studio-section__description">
+                  Controle trilhas de fundo e faixas principais com medidores em tempo real.
+                </p>
+              </div>
+            </div>
+            <div className="row g-4">
+              <div className="col-12 col-xl-6">
+                <AudioPlayer
+                  title="Player de Fundo"
+                  playlist={backgroundPlaylist}
+                  currentTrackIndex={backgroundIndex}
+                  onSelectTrack={selectBackgroundTrack}
+                  playing={backgroundPlaying}
+                  onTogglePlay={toggleBackgroundPlay}
+                  volume={backgroundVolume}
+                  onVolumeChange={setBackgroundVolume}
+                  analyser={mixer.backgroundAnalyser}
+                  registerElement={mixer.registerBackgroundElement}
+                  onNextTrack={nextBackground}
+                  onPreviousTrack={prevBackground}
+                />
+              </div>
+              <div className="col-12 col-xl-6">
+                <AudioPlayer
+                  title="Player Principal"
+                  playlist={mainPlaylist}
+                  currentTrackIndex={mainIndex}
+                  onSelectTrack={selectMainTrack}
+                  playing={mainPlaying}
+                  onTogglePlay={toggleMainPlay}
+                  volume={mainVolume}
+                  onVolumeChange={setMainVolume}
+                  analyser={mixer.mainAnalyser}
+                  registerElement={mixer.registerMainElement}
+                  onNextTrack={nextMain}
+                  onPreviousTrack={prevMain}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section id="microphone" className="studio-section">
+            <div className="studio-section__header">
+              <div>
+                <h2 className="studio-section__title">Microfone & saída final</h2>
+                <p className="studio-section__description">
+                  Ajuste o ganho do microfone, monitore o master e exporte o mix para verificação.
+                </p>
+              </div>
+            </div>
+            <div className="row g-4">
+              <div className="col-12 col-lg-4">
+                <MicrophoneControl
+                  microphoneActive={mixer.microphoneActive}
+                  connectMicrophone={mixer.connectMicrophone}
+                  disconnectMicrophone={mixer.disconnectMicrophone}
+                  volume={microphoneVolume}
+                  onVolumeChange={setMicrophoneVolume}
+                  analyser={mixer.microphoneAnalyser}
+                />
+              </div>
+              <div className="col-12 col-lg-8">
+                <MixOutput stream={mixer.mixStream} />
+              </div>
+            </div>
+          </section>
+
+          <section id="playlists" className="studio-section">
+            <div className="studio-section__header">
+              <div>
+                <h2 className="studio-section__title">Playlists e programação</h2>
+                <p className="studio-section__description">
+                  Mantenha suas listas organizadas e alterne rapidamente entre faixas e trilhas.
+                </p>
+              </div>
+            </div>
+            <div className="row g-4">
+              <div className="col-12 col-xl-6">
+                <PlaylistManager
+                  title="Trilhas de Fundo"
+                  playlist={backgroundPlaylist}
+                  onAddTrack={(track) => handleAddTrack('background', track)}
+                  onRemoveTrack={(id) => handleRemoveTrack('background', id)}
+                  onSelectTrack={selectBackgroundTrack}
+                  activeId={backgroundTrack?.id || null}
+                />
+              </div>
+              <div className="col-12 col-xl-6">
+                <PlaylistManager
+                  title="Faixas Principais"
+                  playlist={mainPlaylist}
+                  onAddTrack={(track) => handleAddTrack('main', track)}
+                  onRemoveTrack={(id) => handleRemoveTrack('main', id)}
+                  onSelectTrack={selectMainTrack}
+                  activeId={mainTrack?.id || null}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section id="extras" className="studio-section">
+            <div className="studio-section__header">
+              <div>
+                <h2 className="studio-section__title">Live extras</h2>
+                <p className="studio-section__description">
+                  Integre transmissões externas, playlists automáticas e notas operacionais.
+                </p>
+              </div>
+            </div>
+            <div className="row g-4">
+              <div className="col-12 col-xl-6">
+                <YouTubePanel />
+              </div>
+              <div className="col-12 col-xl-6">
+                <div className="card border-0 shadow-sm h-100">
+                  <div className="card-body d-flex flex-column gap-3">
+                    <h3 className="h5 mb-0">Observações rápidas</h3>
+                    <p className="text-muted mb-0">
+                      Permissões de microfone e autoplay variam entre navegadores. Prefira URLs com
+                      CORS liberado e evite conteúdos com DRM.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <footer className="studio-footer container-xl">
+          Radio Royal • Estúdio web em tempo real powered by Web Audio API & Owncast.
         </footer>
       </div>
     </div>
