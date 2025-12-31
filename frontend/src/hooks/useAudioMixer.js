@@ -1,308 +1,294 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const CONTEXT_NOT_SUPPORTED_ERROR = 'Web Audio API não é suportada neste navegador.';
-const SOURCE_NODE_KEY = '__radioRoyalSourceNode';
+const defaultRelay = "ws://localhost:8090";
+
+const createAudioContext = () => {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  return new AudioContextClass();
+};
 
 export function useAudioMixer() {
-  const contextRef = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState(null);
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(false);
+  const [tracks, setTracks] = useState({
+    bed: { url: "", playing: false, gain: 0.6, currentTime: 0, duration: 0 },
+    main: { url: "", playing: false, gain: 0.8, currentTime: 0, duration: 0 }
+  });
+
+  const audioContextRef = useRef(null);
   const destinationRef = useRef(null);
-  const masterGainRef = useRef(null);
-  const backgroundGainRef = useRef(null);
-  const mainGainRef = useRef(null);
-  const microphoneGainRef = useRef(null);
-  const backgroundAnalyserRef = useRef(null);
-  const mainAnalyserRef = useRef(null);
-  const microphoneAnalyserRef = useRef(null);
-  const sourcesRef = useRef(new Map());
-  const microphoneStreamRef = useRef(null);
-  const [contextError, setContextError] = useState(null);
-  const [isContextReady, setIsContextReady] = useState(false);
-  const [microphoneActive, setMicrophoneActive] = useState(false);
+  const gainsRef = useRef({});
+  const audioElementsRef = useRef({});
+  const mediaRecorderRef = useRef(null);
+  const micStreamRef = useRef(null);
+  const micSourceRef = useRef(null);
+  const wsRef = useRef(null);
 
-  const createContextGraph = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-
-    if (!AudioContextClass) {
-      setContextError(CONTEXT_NOT_SUPPORTED_ERROR);
-      return null;
-    }
-
-    if (!contextRef.current) {
-      const context = new AudioContextClass();
-      const masterGain = context.createGain();
-      const backgroundGain = context.createGain();
-      const mainGain = context.createGain();
-      const microphoneGain = context.createGain();
-      const backgroundAnalyser = context.createAnalyser();
-      const mainAnalyser = context.createAnalyser();
-      const microphoneAnalyser = context.createAnalyser();
-      const destination = context.createMediaStreamDestination();
-
-      backgroundGain.connect(backgroundAnalyser);
-      mainGain.connect(mainAnalyser);
-      microphoneGain.connect(microphoneAnalyser);
-
-      backgroundAnalyser.connect(masterGain);
-      mainAnalyser.connect(masterGain);
-      microphoneAnalyser.connect(masterGain);
-
-      masterGain.connect(destination);
-      masterGain.connect(context.destination);
-
-      masterGain.gain.value = 1;
-      backgroundGain.gain.value = 0.5;
-      mainGain.gain.value = 0.8;
-      microphoneGain.gain.value = 0.7;
-
-      backgroundAnalyser.fftSize = 256;
-      mainAnalyser.fftSize = 256;
-      microphoneAnalyser.fftSize = 256;
-
-      contextRef.current = context;
-      destinationRef.current = destination;
-      masterGainRef.current = masterGain;
-      backgroundGainRef.current = backgroundGain;
-      mainGainRef.current = mainGain;
-      microphoneGainRef.current = microphoneGain;
-      backgroundAnalyserRef.current = backgroundAnalyser;
-      mainAnalyserRef.current = mainAnalyser;
-      microphoneAnalyserRef.current = microphoneAnalyser;
-      setIsContextReady(true);
-    }
-
-    return contextRef.current;
+  const relayUrl = useMemo(() => {
+    return import.meta.env.VITE_RELAY_WS_URL || defaultRelay;
   }, []);
 
-  const ensureContext = useCallback(async () => {
-    let context = createContextGraph();
-    if (!context) {
-      return null;
+  const ensureContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      const context = createAudioContext();
+      const destination = context.createMediaStreamDestination();
+      const bedGain = context.createGain();
+      const mainGain = context.createGain();
+      const micGain = context.createGain();
+
+      bedGain.gain.value = tracks.bed.gain;
+      mainGain.gain.value = tracks.main.gain;
+      micGain.gain.value = 1;
+
+      bedGain.connect(destination);
+      mainGain.connect(destination);
+      micGain.connect(destination);
+
+      bedGain.connect(context.destination);
+      mainGain.connect(context.destination);
+      micGain.connect(context.destination);
+
+      gainsRef.current = { bed: bedGain, main: mainGain, mic: micGain };
+      audioContextRef.current = context;
+      destinationRef.current = destination;
     }
+    return audioContextRef.current;
+  }, [tracks.bed.gain, tracks.main.gain]);
 
-    if (context.state === 'closed') {
-      contextRef.current = null;
-      setIsContextReady(false);
-      sourcesRef.current.clear();
-      context = createContextGraph();
-      if (!context) {
-        return null;
-      }
-    }
-
-    if (context.state === 'suspended') {
-      try {
-        await context.resume();
-        setContextError(null);
-      } catch (error) {
-        if (error?.name === 'NotAllowedError') {
-          setContextError('Clique em qualquer controle para liberar o áudio.');
-          return context;
-        }
-        console.warn('Falha ao retomar o AudioContext.', error);
-        setContextError('Não foi possível iniciar o áudio. Tente novamente.');
-        return null;
-      }
-    }
-
-    return context;
-  }, [createContextGraph]);
-
-  const connectElement = useCallback(
-    (element, channel) => {
+  const attachAudioElement = useCallback(
+    (slot, url) => {
+      const context = ensureContext();
+      let element = audioElementsRef.current[slot];
       if (!element) {
-        return () => {};
+        element = new Audio();
+        element.crossOrigin = "anonymous";
+        audioElementsRef.current[slot] = element;
+
+        const source = context.createMediaElementSource(element);
+        source.connect(gainsRef.current[slot]);
+
+        element.addEventListener("timeupdate", () => {
+          setTracks((prev) => ({
+            ...prev,
+            [slot]: {
+              ...prev[slot],
+              currentTime: element.currentTime
+            }
+          }));
+        });
+        element.addEventListener("loadedmetadata", () => {
+          setTracks((prev) => ({
+            ...prev,
+            [slot]: {
+              ...prev[slot],
+              duration: Number.isFinite(element.duration) ? element.duration : 0
+            }
+          }));
+        });
+        element.addEventListener("ended", () => {
+          setTracks((prev) => ({
+            ...prev,
+            [slot]: { ...prev[slot], playing: false }
+          }));
+        });
       }
-
-      element.crossOrigin = element.crossOrigin || 'anonymous';
-      const connect = async () => {
-        const context = await ensureContext();
-        if (!context) {
-          return;
-        }
-
-        const gainNode = channel === 'background' ? backgroundGainRef.current : mainGainRef.current;
-        if (!gainNode) {
-          return;
-        }
-
-        const sources = sourcesRef.current;
-        let entry = sources.get(element);
-
-        if (!entry && element[SOURCE_NODE_KEY]) {
-          entry = {
-            node: element[SOURCE_NODE_KEY],
-            channel: null,
-            connected: false
-          };
-          sources.set(element, entry);
-        }
-
-        if (entry) {
-          const needsReconnect = entry.channel !== channel || !entry.connected;
-
-          if (!needsReconnect) {
-            return;
-          }
-
-          try {
-            entry.node.disconnect();
-          } catch (error) {
-            console.warn('Erro ao preparar reconexão da fonte de áudio', error);
-          }
-
-          try {
-            entry.node.connect(gainNode);
-            entry.channel = channel;
-            entry.connected = true;
-          } catch (error) {
-            console.error('Erro ao reconectar fonte de áudio', error);
-          }
-
-          return;
-        }
-
-        try {
-          const sourceNode = context.createMediaElementSource(element);
-          sourceNode.connect(gainNode);
-          // armazena a referência para reaproveitar o nó nas próximas montagens
-          element[SOURCE_NODE_KEY] = sourceNode;
-          sources.set(element, {
-            node: sourceNode,
-            channel,
-            connected: true
-          });
-        } catch (error) {
-          console.error('Erro ao conectar elemento de áudio', error);
-        }
-      };
-
-      connect();
-
-      return () => {
-        const entry = sourcesRef.current.get(element);
-        if (entry?.connected) {
-          try {
-            entry.node.disconnect();
-          } catch (error) {
-            console.warn('Erro ao desconectar fonte de áudio', error);
-          }
-          entry.connected = false;
-        }
-        if (entry) {
-          sourcesRef.current.delete(element);
-        }
-      };
+      element.src = url;
+      return element;
     },
     [ensureContext]
   );
 
-  const setVolume = useCallback((channel, value) => {
-    const gainNode =
-      channel === 'background'
-        ? backgroundGainRef.current
-        : channel === 'main'
-        ? mainGainRef.current
-        : microphoneGainRef.current;
-
-    if (gainNode) {
-      gainNode.gain.value = value;
+  const setTrackGain = useCallback((slot, value) => {
+    const next = Number(value);
+    setTracks((prev) => ({
+      ...prev,
+      [slot]: { ...prev[slot], gain: next }
+    }));
+    if (gainsRef.current[slot]) {
+      gainsRef.current[slot].gain.value = next;
     }
   }, []);
 
-  const connectMicrophone = useCallback(async () => {
-    const context = await ensureContext();
-    if (!context) {
-      throw new Error(contextError || CONTEXT_NOT_SUPPORTED_ERROR);
-    }
+  const loadTrack = useCallback(
+    (slot, url) => {
+      const element = attachAudioElement(slot, url);
+      setTracks((prev) => ({
+        ...prev,
+        [slot]: { ...prev[slot], url }
+      }));
+      element.load();
+    },
+    [attachAudioElement]
+  );
 
-    if (microphoneActive) {
-      return microphoneStreamRef.current;
-    }
+  const toggleTrack = useCallback(
+    async (slot) => {
+      try {
+        const context = ensureContext();
+        if (context.state !== "running") {
+          await context.resume();
+        }
 
-    if (
-      typeof navigator === 'undefined' ||
-      !navigator.mediaDevices ||
-      typeof navigator.mediaDevices.getUserMedia !== 'function'
-    ) {
-      throw new Error('Este navegador não oferece suporte a captura de microfone.');
-    }
+        const element = audioElementsRef.current[slot];
+        if (!element?.src) {
+          return;
+        }
 
+        if (element.paused) {
+          await element.play();
+          setTracks((prev) => ({
+            ...prev,
+            [slot]: { ...prev[slot], playing: true }
+          }));
+        } else {
+          element.pause();
+          setTracks((prev) => ({
+            ...prev,
+            [slot]: { ...prev[slot], playing: false }
+          }));
+        }
+      } catch (err) {
+        setError("Falha ao tocar a faixa.");
+      }
+    },
+    [ensureContext]
+  );
+
+  const playTrack = useCallback(
+    async (slot, url) => {
+      try {
+        if (!url) return;
+        const context = ensureContext();
+        if (context.state !== "running") {
+          await context.resume();
+        }
+
+        const element = attachAudioElement(slot, url);
+        if (!element) return;
+
+        await element.play();
+        setTracks((prev) => ({
+          ...prev,
+          [slot]: { ...prev[slot], url, playing: true }
+        }));
+      } catch (err) {
+        setError("Falha ao tocar a faixa.");
+      }
+    },
+    [attachAudioElement, ensureContext]
+  );
+
+  const seekTrack = useCallback((slot, time) => {
+    const element = audioElementsRef.current[slot];
+    if (!element || !Number.isFinite(time)) return;
+    element.currentTime = time;
+    setTracks((prev) => ({
+      ...prev,
+      [slot]: { ...prev[slot], currentTime: time }
+    }));
+  }, []);
+
+  const toggleMic = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const source = context.createMediaStreamSource(stream);
-      source.connect(microphoneGainRef.current);
-      microphoneStreamRef.current = stream;
-      setMicrophoneActive(true);
-      return stream;
-    } catch (error) {
-      console.error('Falha ao conectar microfone', error);
-      throw error;
-    }
-  }, [contextError, ensureContext, microphoneActive]);
+      const context = ensureContext();
+      if (context.state !== "running") {
+        await context.resume();
+      }
 
-  const disconnectMicrophone = useCallback(() => {
-    if (microphoneStreamRef.current) {
-      microphoneStreamRef.current.getTracks().forEach((track) => track.stop());
-      microphoneStreamRef.current = null;
+      if (!micEnabled) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = context.createMediaStreamSource(stream);
+        source.connect(gainsRef.current.mic);
+        micStreamRef.current = stream;
+        micSourceRef.current = source;
+        setMicEnabled(true);
+      } else {
+        micStreamRef.current?.getTracks().forEach((track) => track.stop());
+        micStreamRef.current = null;
+        micSourceRef.current = null;
+        setMicEnabled(false);
+      }
+    } catch (err) {
+      setError("Falha ao acessar o microfone.");
     }
-    setMicrophoneActive(false);
+  }, [ensureContext, micEnabled]);
+
+  const startBroadcast = useCallback(async () => {
+    try {
+      const context = ensureContext();
+      if (context.state !== "running") {
+        await context.resume();
+      }
+
+      if (!destinationRef.current) {
+        throw new Error("Sem destino de audio.");
+      }
+
+      const ws = new WebSocket(relayUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        const recorder = new MediaRecorder(destinationRef.current.stream, {
+          mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+            ? "audio/webm;codecs=opus"
+            : "audio/webm"
+        });
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+            ws.send(event.data);
+          }
+        };
+        recorder.start(1000);
+        mediaRecorderRef.current = recorder;
+        setBroadcasting(true);
+      };
+
+      ws.onerror = () => {
+        setError("Falha na conexao com o relay.");
+        setBroadcasting(false);
+      };
+
+      ws.onclose = () => {
+        setBroadcasting(false);
+      };
+    } catch (err) {
+      setError("Falha ao iniciar a transmissao.");
+    }
+  }, [ensureContext, relayUrl]);
+
+  const stopBroadcast = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    wsRef.current?.close();
+    wsRef.current = null;
+    setBroadcasting(false);
   }, []);
 
   useEffect(() => {
+    setReady(true);
     return () => {
-      sourcesRef.current.forEach((entry, element) => {
-        if (!entry?.node) {
-          return;
-        }
-        try {
-          entry.node.disconnect();
-        } catch (error) {
-          console.warn('Erro ao desconectar fonte ao desmontar', error);
-        }
-        entry.connected = false;
-        if (element && element[SOURCE_NODE_KEY]) {
-          delete element[SOURCE_NODE_KEY];
-        }
-      });
-      sourcesRef.current.clear();
-      disconnectMicrophone();
-      if (contextRef.current) {
-        contextRef.current.close();
-      }
+      stopBroadcast();
+      micStreamRef.current?.getTracks().forEach((track) => track.stop());
+      audioContextRef.current?.close();
     };
-  }, [disconnectMicrophone]);
+  }, [stopBroadcast]);
 
-  return useMemo(
-    () => ({
-      ensureContext,
-      contextError,
-      isContextReady,
-      registerBackgroundElement: (element) => connectElement(element, 'background'),
-      registerMainElement: (element) => connectElement(element, 'main'),
-      setBackgroundVolume: (value) => setVolume('background', value),
-      setMainVolume: (value) => setVolume('main', value),
-      setMicrophoneVolume: (value) => setVolume('microphone', value),
-      connectMicrophone,
-      disconnectMicrophone,
-      microphoneActive,
-      backgroundAnalyser: backgroundAnalyserRef.current,
-      mainAnalyser: mainAnalyserRef.current,
-      microphoneAnalyser: microphoneAnalyserRef.current,
-      mixStream: destinationRef.current ? destinationRef.current.stream : null
-    }),
-    [
-      connectElement,
-      connectMicrophone,
-      contextError,
-      disconnectMicrophone,
-      ensureContext,
-      isContextReady,
-      microphoneActive,
-      setVolume
-    ]
-  );
+  return {
+    ready,
+    error,
+    broadcasting,
+    micEnabled,
+    tracks,
+    loadTrack,
+    toggleTrack,
+    toggleMic,
+    setTrackGain,
+    seekTrack,
+    playTrack,
+    startBroadcast,
+    stopBroadcast
+  };
 }
