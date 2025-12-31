@@ -1,173 +1,139 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
-ROOT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUNTIME_DIR="${ROOT_DIR}/.runtime"
-LOG_DIR="${RUNTIME_DIR}/logs"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-STREAM_KEY="${STREAM_KEY:-royal-demo}"
-OWNCAST_WEB_PORT="${OWNCAST_WEB_PORT:-8080}"
-OWNCAST_WEB_IP="${OWNCAST_WEB_IP:-0.0.0.0}"
-OWNCAST_HLS_PATH="${OWNCAST_HLS_PATH:-/hls/stream.m3u8}"
-MEDIA_CHUNK_INTERVAL_MS="${MEDIA_CHUNK_INTERVAL_MS:-500}"
-RELAY_PORT="${RELAY_PORT:-8081}"
-FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+if [ -f "${ROOT_DIR}/.env" ]; then
+  set -a
+  . "${ROOT_DIR}/.env"
+  set +a
+fi
 
-RTMP_URL_DEFAULT="rtmp://127.0.0.1:1935/live/${STREAM_KEY}"
-RTMP_URL="${RTMP_URL:-${RTMP_URL_DEFAULT}}"
-HLS_URL="http://localhost:${OWNCAST_WEB_PORT}/hls/stream.m3u8"
-RELAY_URL="ws://localhost:${RELAY_PORT}"
-
-OWNCAST_LOG="${LOG_DIR}/owncast.log"
-RELAY_LOG="${LOG_DIR}/streaming-relay.log"
-FRONTEND_LOG="${LOG_DIR}/frontend.log"
-
-mkdir -p "${RUNTIME_DIR}" "${LOG_DIR}" "${ROOT_DIR}/owncast/data/logs" "${ROOT_DIR}/owncast/data/backups"
-
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Erro: dependência obrigatória '$1' não encontrada no PATH." >&2
-    exit 1
+detect_stream_key() {
+  local config_path="$1"
+  local key=""
+  if [ -f "$config_path" ]; then
+    if command -v rg >/dev/null 2>&1; then
+      key=$(rg -n "(stream.?key|streamKey)" "$config_path" 2>/dev/null | head -n 1 | awk -F':' '{print $2}' | tr -d ' "\r')
+    else
+      key=$(grep -E "(stream.?key|streamKey)" "$config_path" 2>/dev/null | head -n 1 | awk -F':' '{print $2}' | tr -d ' "\r')
+    fi
   fi
+  echo "$key"
 }
 
-wait_for_http() {
-  local url="$1"
-  local service_name="$2"
-  local log_path="$3"
-  local attempts="${4:-60}"
-
-  for attempt in $(seq 1 "${attempts}"); do
-    if curl -fsS "${url}" >/dev/null 2>&1; then
-      echo "✓ ${service_name} disponível em ${url}"
-      return 0
+wait_for_port() {
+  local host="$1"
+  local port="$2"
+  local retries=120
+  local count=0
+  until nc -z "$host" "$port" >/dev/null 2>&1; do
+    count=$((count + 1))
+    if [ "$count" -ge "$retries" ]; then
+      return 1
     fi
-    sleep 1
+    sleep 0.5
   done
+  return 0
+}
 
-  echo "Erro: ${service_name} não respondeu em tempo hábil. Confira os logs em ${log_path}." >&2
+echo "Iniciando stack Radio Royal..."
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js nao encontrado. Instale Node 18+ e tente novamente."
   exit 1
-}
+fi
 
-ensure_node_modules() {
-  if [ ! -d "${ROOT_DIR}/frontend/node_modules" ]; then
-    echo "Instalando dependências do frontend..."
-    (cd "${ROOT_DIR}/frontend" && npm install)
-  fi
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm nao encontrado. Instale npm 9+ e tente novamente."
+  exit 1
+fi
 
-  if [ ! -d "${ROOT_DIR}/streaming-relay/node_modules" ]; then
-    echo "Instalando dependências do relay..."
-    (cd "${ROOT_DIR}/streaming-relay" && npm install)
-  fi
-}
-
-PIDS=()
-
-cleanup() {
-  if [ "${#PIDS[@]}" -gt 0 ]; then
-    echo ""
-    echo "Encerrando serviços..."
-    for pid in "${PIDS[@]}"; do
-      if kill -0 "${pid}" >/dev/null 2>&1; then
-        kill "${pid}" >/dev/null 2>&1 || true
-        wait "${pid}" >/dev/null 2>&1 || true
-      fi
-    done
-  fi
-}
-
-trap cleanup EXIT
-
-require_command node
-require_command npm
-require_command curl
-
-FFMPEG_BIN_DEFAULT="${ROOT_DIR}/owncast/ffmpeg"
-if [ -z "${FFMPEG_BIN:-}" ]; then
-  if [ -x "${FFMPEG_BIN_DEFAULT}" ]; then
-    FFMPEG_BIN="${FFMPEG_BIN_DEFAULT}"
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    echo "Instalando FFmpeg via brew..."
+    brew install ffmpeg
   else
-    FFMPEG_BIN="$(command -v ffmpeg || true)"
-    if [ -z "${FFMPEG_BIN}" ]; then
-      echo "Erro: FFmpeg não encontrado. Instale o FFmpeg ou defina a variável FFMPEG_BIN com o caminho para o binário." >&2
-      exit 1
-    fi
+    echo "FFmpeg nao encontrado. Instale e tente novamente."
+    exit 1
   fi
 fi
 
-ensure_node_modules
+if ! command -v yt-dlp >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    echo "Instalando yt-dlp via brew..."
+    brew install yt-dlp
+  else
+    echo "yt-dlp nao encontrado. Instale e tente novamente."
+    exit 1
+  fi
+fi
 
-start_owncast() {
-  echo "Iniciando Owncast (porta web ${OWNCAST_WEB_PORT})..."
-  (cd "${ROOT_DIR}/owncast" && \
-    ./owncast \
-      -webserverip "${OWNCAST_WEB_IP}" \
-      -webserverport "${OWNCAST_WEB_PORT}" \
-      -streamkey "${STREAM_KEY}" \
-      -logdir "${ROOT_DIR}/owncast/data/logs" \
-      -backupdir "${ROOT_DIR}/owncast/data/backups" \
-      -database "${ROOT_DIR}/owncast/data/owncast.db") \
-      >"${OWNCAST_LOG}" 2>&1 &
+OWNCAST_CONFIG="${ROOT_DIR}/owncast/config.yaml"
+OWNCAST_STREAM_KEY=${OWNCAST_STREAM_KEY:-""}
+OWNCAST_ADMIN_PASSWORD=${OWNCAST_ADMIN_PASSWORD:-""}
 
-  local pid=$!
-  PIDS+=("${pid}")
-  wait_for_http "http://localhost:${OWNCAST_WEB_PORT}/" "Owncast" "${OWNCAST_LOG}"
-}
+if [ -x "${ROOT_DIR}/owncast/owncast" ]; then
+  echo "Iniciando Owncast..."
+  OWNCAST_ARGS=()
+  if [ -f "${OWNCAST_CONFIG}" ]; then
+    OWNCAST_ARGS+=(--config "${OWNCAST_CONFIG}")
+  fi
+  if [ -n "${OWNCAST_STREAM_KEY}" ]; then
+    OWNCAST_ARGS+=(--streamkey "${OWNCAST_STREAM_KEY}")
+  fi
+  if [ -n "${OWNCAST_ADMIN_PASSWORD}" ]; then
+    OWNCAST_ARGS+=(--adminpassword "${OWNCAST_ADMIN_PASSWORD}")
+  fi
+  (cd "${ROOT_DIR}/owncast" && ./owncast "${OWNCAST_ARGS[@]}") &
+else
+  echo "Owncast nao encontrado em ${ROOT_DIR}/owncast/owncast"
+  echo "Baixe o binario e coloque nessa pasta para iniciar automaticamente."
+fi
 
-start_streaming_relay() {
-  echo "Iniciando relay WebSocket (porta ${RELAY_PORT})..."
-  (cd "${ROOT_DIR}/streaming-relay" && \
-    PORT="${RELAY_PORT}" \
-    RTMP_URL="${RTMP_URL}" \
-    FFMPEG_PATH="${FFMPEG_BIN}" \
-    node server.js) \
-      >"${RELAY_LOG}" 2>&1 &
+if [ -z "${STREAM_KEY}" ]; then
+  STREAM_KEY=$(detect_stream_key "${OWNCAST_CONFIG}")
+fi
 
-  local pid=$!
-  PIDS+=("${pid}")
-  wait_for_http "http://localhost:${RELAY_PORT}/status" "Relay" "${RELAY_LOG}"
-}
+if [ -z "${STREAM_KEY}" ]; then
+  STREAM_KEY="${OWNCAST_STREAM_KEY:-localdev}"
+fi
 
-start_frontend() {
-  echo "Iniciando frontend (porta ${FRONTEND_PORT})..."
-  (cd "${ROOT_DIR}/frontend" && \
-    VITE_OWNCAST_WEB_PORT="${OWNCAST_WEB_PORT}" \
-    VITE_OWNCAST_HLS_PATH="${OWNCAST_HLS_PATH}" \
-    VITE_MEDIA_CHUNK_INTERVAL_MS="${MEDIA_CHUNK_INTERVAL_MS}" \
-    npm run dev -- --host --port "${FRONTEND_PORT}") \
-      >"${FRONTEND_LOG}" 2>&1 &
+if [ -z "${RTMP_URL}" ]; then
+  RTMP_URL="rtmp://localhost:1935/live/${STREAM_KEY}"
+fi
 
-  local pid=$!
-  PIDS+=("${pid}")
-  wait_for_http "http://localhost:${FRONTEND_PORT}/" "Frontend" "${FRONTEND_LOG}"
-}
+export STREAM_KEY
+export RTMP_URL
 
-start_owncast
-start_streaming_relay
-start_frontend
+if [ -x "${ROOT_DIR}/owncast/owncast" ]; then
+  echo "Aguardando Owncast iniciar na porta 1935..."
+  if ! wait_for_port "127.0.0.1" 1935; then
+    echo "Owncast nao respondeu na porta 1935. Verifique se ele subiu corretamente."
+  fi
+fi
 
-cat <<EOF
+echo "Usando STREAM_KEY=${STREAM_KEY}"
+echo "Usando RTMP_URL=${RTMP_URL}"
 
-============================================================
-Stack Radio Royal em execução
-------------------------------------------------------------
- Relay (WebSocket):   ${RELAY_URL}
- Ingest RTMP:         ${RTMP_URL}
- HLS público:         ${HLS_URL}
- Painel Owncast:      http://localhost:${OWNCAST_WEB_PORT}/admin
- Frontend público:    http://localhost:${FRONTEND_PORT}/
- Frontend admin:      http://localhost:${FRONTEND_PORT}/admin
+if [ ! -d "${ROOT_DIR}/streaming-relay/node_modules" ]; then
+  echo "Instalando dependencias do relay..."
+  (cd "${ROOT_DIR}/streaming-relay" && npm install)
+else
+  echo "Atualizando dependencias do relay..."
+  (cd "${ROOT_DIR}/streaming-relay" && npm install)
+fi
 
-Stream key configurada nesta sessão: ${STREAM_KEY}
+if [ ! -d "${ROOT_DIR}/frontend/node_modules" ]; then
+  echo "Instalando dependencias do frontend..."
+  (cd "${ROOT_DIR}/frontend" && npm install)
+else
+  echo "Atualizando dependencias do frontend..."
+  (cd "${ROOT_DIR}/frontend" && npm install)
+fi
 
-Logs:
- - Owncast:         ${OWNCAST_LOG}
- - Streaming relay: ${RELAY_LOG}
- - Frontend:        ${FRONTEND_LOG}
+echo "Iniciando relay..."
+(cd "${ROOT_DIR}/streaming-relay" && node server.js) &
 
-Pressione Ctrl+C para encerrar todos os serviços.
-============================================================
-
-EOF
-
-wait
+echo "Iniciando frontend..."
+(cd "${ROOT_DIR}/frontend" && npm run dev)
