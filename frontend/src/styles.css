@@ -335,6 +335,23 @@ body {
   gap: 0.4rem;
 }
 
+.header-air-slot .audio-volume {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.header-air-slot .audio-volume-label {
+  font-size: 0.52rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6f5a4f;
+}
+
+.header-air-slot .audio-volume input[type="range"] {
+  width: 90px;
+}
+
 .header-air-slot .audio-play {
   padding: 0.15rem 0.55rem;
   font-size: 0.52rem;

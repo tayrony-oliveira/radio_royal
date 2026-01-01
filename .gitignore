@@ -5,3 +5,7 @@ frontend/dist/
 *.DS_Store
 owncast/
 streaming-relay/*-player-script.js
+.env
+streaming-relay/.env
+tts/
+data/

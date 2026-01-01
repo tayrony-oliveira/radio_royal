@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { WebSocketServer } from "ws";
@@ -33,7 +34,15 @@ const config = {
   ytdlpPath: process.env.YTDLP_PATH || fileEnv.YTDLP_PATH || "yt-dlp",
   videoSize: process.env.VIDEO_SIZE || fileEnv.VIDEO_SIZE || "1280x720",
   videoFps: process.env.VIDEO_FPS || fileEnv.VIDEO_FPS || "30",
-  audioBitrate: process.env.AUDIO_BITRATE || fileEnv.AUDIO_BITRATE || "128k"
+  audioBitrate: process.env.AUDIO_BITRATE || fileEnv.AUDIO_BITRATE || "128k",
+  ttsEngine: (process.env.TTS_ENGINE || fileEnv.TTS_ENGINE || "say").toLowerCase(),
+  ttsCommand: process.env.TTS_COMMAND || fileEnv.TTS_COMMAND || "",
+  ttsPiperPath: process.env.TTS_PIPER_PATH || fileEnv.TTS_PIPER_PATH || "",
+  ttsPiperModelPath:
+    process.env.TTS_PIPER_MODEL_PATH || fileEnv.TTS_PIPER_MODEL_PATH || "",
+  ttsPiperModels: process.env.TTS_PIPER_MODELS || fileEnv.TTS_PIPER_MODELS || "",
+  ttsPiperLibPath:
+    process.env.TTS_PIPER_LIB_PATH || fileEnv.TTS_PIPER_LIB_PATH || ""
 };
 
 const streamCache = new Map();
@@ -41,6 +50,85 @@ const cacheTtlMs = 10 * 60 * 1000;
 
 const isYouTubeHost = (host) => {
   return ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(host);
+};
+
+const ttsCommand = () => {
+  if (config.ttsCommand) return config.ttsCommand;
+  if (fs.existsSync("/usr/bin/say")) return "/usr/bin/say";
+  return null;
+};
+
+const resolvePiperModels = () => {
+  const raw = config.ttsPiperModels
+    .split(/[,\n]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const fromEnv = raw.map((entry) => {
+    const modelPath = path.isAbsolute(entry)
+      ? entry
+      : path.join(projectRoot, entry);
+    const name = path.basename(entry).replace(/\.onnx$/i, "");
+    const locale = name.includes("pt_BR") ? "pt-BR" : "custom";
+    return { name, locale, modelPath };
+  });
+
+  const directModel = config.ttsPiperModelPath
+    ? {
+        name: path.basename(config.ttsPiperModelPath).replace(/\.onnx$/i, ""),
+        locale: config.ttsPiperModelPath.includes("pt_BR") ? "pt-BR" : "custom",
+        modelPath: path.isAbsolute(config.ttsPiperModelPath)
+          ? config.ttsPiperModelPath
+          : path.join(projectRoot, config.ttsPiperModelPath)
+      }
+    : null;
+
+  const combined = directModel ? [directModel, ...fromEnv] : fromEnv;
+  const seen = new Set();
+  return combined.filter((item) => {
+    if (!item?.modelPath) return false;
+    if (seen.has(item.modelPath)) return false;
+    seen.add(item.modelPath);
+    return true;
+  });
+};
+
+const pickPiperModel = (voiceName) => {
+  const models = resolvePiperModels();
+  if (!models.length) return null;
+  if (!voiceName) return models[0];
+  const direct = models.find((model) => model.name === voiceName);
+  return direct || models[0];
+};
+
+const runPiper = async (text, modelPath, wavPath) => {
+  const env = { ...process.env };
+  if (config.ttsPiperLibPath) {
+    const existing = env.DYLD_LIBRARY_PATH || "";
+    env.DYLD_LIBRARY_PATH = existing
+      ? `${config.ttsPiperLibPath}:${existing}`
+      : config.ttsPiperLibPath;
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(config.ttsPiperPath, ["--model", modelPath, "--output_file", wavPath], {
+      env,
+      stdio: ["pipe", "ignore", "pipe"]
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr || `piper finalizado com erro: ${code}`));
+        return;
+      }
+      resolve();
+    });
+    child.stdin.write(text);
+    child.stdin.end();
+  });
 };
 
 const resolveYouTubeUrl = (value) => {
@@ -209,6 +297,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === "/tts/voices") {
+    if (config.ttsEngine === "piper") {
+      const voices = resolvePiperModels().map((model) => ({
+        name: model.name,
+        locale: model.locale
+      }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ voices }));
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ voices: [] }));
+    return;
+  }
+
   if (requestUrl.pathname === "/youtube") {
     const target = requestUrl.searchParams.get("url");
     const resolvedUrl = target ? resolveYouTubeUrl(target) : null;
@@ -286,6 +390,109 @@ const server = http.createServer(async (req, res) => {
       console.error("Erro ao carregar playlist:", error?.message || error);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Falha ao carregar playlist." }));
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/tts") {
+    const rawText = requestUrl.searchParams.get("text") || "";
+    const text = rawText.trim();
+    if (!text) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Texto obrigatorio." }));
+      return;
+    }
+
+    if (text.length > 500) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Texto muito longo (max 500)." }));
+      return;
+    }
+
+    const voice = (requestUrl.searchParams.get("voice") || "").trim();
+    const rateRaw = requestUrl.searchParams.get("rate");
+    const rateValue = rateRaw ? Number.parseInt(rateRaw, 10) : null;
+    const rate = Number.isFinite(rateValue)
+      ? Math.min(300, Math.max(80, rateValue))
+      : null;
+
+    try {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "radio-royal-tts-")
+      );
+      const wavPath = path.join(tmpDir, "tts.wav");
+      if (config.ttsEngine === "piper") {
+        if (!config.ttsPiperPath) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Piper nao configurado." }));
+          fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+          return;
+        }
+
+        const model = pickPiperModel(voice);
+        if (!model?.modelPath) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Modelo Piper nao encontrado." }));
+          fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+          return;
+        }
+
+        await runPiper(text, model.modelPath, wavPath);
+      } else {
+        const command = ttsCommand();
+        if (!command) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "TTS nao disponivel. Configure TTS_COMMAND." })
+          );
+          fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+          return;
+        }
+
+        const args = [
+          "-o",
+          wavPath,
+          "--file-format=WAVE",
+          "--data-format=LEI16@22050"
+        ];
+        if (voice) {
+          args.push("-v", voice);
+        }
+        if (rate) {
+          args.push("-r", String(rate));
+        }
+        args.push(text);
+
+        await new Promise((resolve, reject) => {
+          const child = spawn(command, args);
+          child.on("error", reject);
+          child.on("close", (code) => {
+            if (code !== 0) {
+              reject(new Error(`say finalizado com erro: ${code}`));
+              return;
+            }
+            resolve();
+          });
+        });
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "audio/wav",
+        "Cache-Control": "no-store"
+      });
+      const stream = fs.createReadStream(wavPath);
+      stream.pipe(res);
+      stream.on("close", () => {
+        fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      });
+      stream.on("error", () => {
+        res.end();
+        fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      });
+    } catch (error) {
+      console.error("Erro ao preparar TTS:", error?.message || error);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Falha ao preparar voz." }));
     }
     return;
   }

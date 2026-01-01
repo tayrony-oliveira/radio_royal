@@ -12,6 +12,7 @@ export default function HeaderPlayer() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(0.8);
 
   const owncastBase = useMemo(() => {
     return import.meta.env.VITE_OWNCAST_WEB_URL || defaultOwncast;
@@ -49,6 +50,8 @@ export default function HeaderPlayer() {
       hls.loadSource(streamUrl);
       hls.attachMedia(media);
     }
+
+    media.volume = volume;
 
     const tryAutoplay = async () => {
       try {
@@ -89,7 +92,7 @@ export default function HeaderPlayer() {
       media.removeEventListener("play", handlePlay);
       media.removeEventListener("pause", handlePause);
     };
-  }, [streamUrl]);
+  }, [streamUrl, volume]);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +156,16 @@ export default function HeaderPlayer() {
     media.currentTime = Number.isFinite(nextTime) ? nextTime : 0;
   };
 
+  const handleVolume = (value) => {
+    const media = audioRef.current;
+    const next = Number(value);
+    const finalValue = Number.isFinite(next) ? next : 0.8;
+    setVolume(finalValue);
+    if (media) {
+      media.volume = finalValue;
+    }
+  };
+
   return (
     <div className="top-air reveal">
       <div className="top-air-header">
@@ -179,6 +192,17 @@ export default function HeaderPlayer() {
           <span className="audio-time">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
+        </div>
+        <div className="audio-volume">
+          <span className="audio-volume-label">Volume</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(event) => handleVolume(event.target.value)}
+          />
         </div>
       </div>
     </div>

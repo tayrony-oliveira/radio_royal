@@ -20,6 +20,7 @@ Projeto web de radio com pagina publica e painel administrativo.
 Coloque o binario do Owncast em `owncast/owncast` e o config em `owncast/config.yaml`.
 
 No config, use o mesmo `STREAM_KEY` do relay e a porta 8080.
+Se voce nao tiver o binario, o script `run-stack.sh` tenta iniciar o Owncast via Docker Compose.
 
 ### 2) Inicie tudo
 
@@ -65,6 +66,7 @@ Relay (`streaming-relay/.env`):
 - `RTMP_URL=rtmp://localhost:1935/live/STREAM_KEY`
 - `FFMPEG_PATH=ffmpeg`
 - `YTDLP_PATH=yt-dlp`
+- `TTS_COMMAND=/usr/bin/say`
 - `VIDEO_SIZE=1280x720`
 - `VIDEO_FPS=30`
 - `AUDIO_BITRATE=128k`
@@ -79,6 +81,8 @@ Frontend (`frontend/.env`):
 - `VITE_RELAY_WS_URL=ws://localhost:8090`
 - `VITE_RELAY_HTTP_URL=http://localhost:8090`
 - `VITE_ADMIN_PASSWORD=royal`
+- `VITE_TTS_VOICE=Luciana`
+- `VITE_TTS_RATE=180`
 
 ## Playlist por URL
 O painel admin aceita URLs diretas de audio (mp3/aac/ogg) e links do YouTube.

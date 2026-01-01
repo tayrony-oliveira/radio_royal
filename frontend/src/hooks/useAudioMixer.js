@@ -16,6 +16,7 @@ export function useAudioMixer() {
     bed: { url: "", playing: false, gain: 0.6, currentTime: 0, duration: 0 },
     main: { url: "", playing: false, gain: 0.8, currentTime: 0, duration: 0 }
   });
+  const [lastEnded, setLastEnded] = useState(null);
 
   const audioContextRef = useRef(null);
   const destinationRef = useRef(null);
@@ -24,6 +25,7 @@ export function useAudioMixer() {
   const mediaRecorderRef = useRef(null);
   const micStreamRef = useRef(null);
   const micSourceRef = useRef(null);
+  const ttsElementRef = useRef(null);
   const wsRef = useRef(null);
 
   const relayUrl = useMemo(() => {
@@ -37,20 +39,24 @@ export function useAudioMixer() {
       const bedGain = context.createGain();
       const mainGain = context.createGain();
       const micGain = context.createGain();
+      const voiceGain = context.createGain();
 
       bedGain.gain.value = tracks.bed.gain;
       mainGain.gain.value = tracks.main.gain;
       micGain.gain.value = 1;
+      voiceGain.gain.value = 1;
 
       bedGain.connect(destination);
       mainGain.connect(destination);
       micGain.connect(destination);
+      voiceGain.connect(destination);
 
       bedGain.connect(context.destination);
       mainGain.connect(context.destination);
       micGain.connect(context.destination);
+      voiceGain.connect(context.destination);
 
-      gainsRef.current = { bed: bedGain, main: mainGain, mic: micGain };
+      gainsRef.current = { bed: bedGain, main: mainGain, mic: micGain, voice: voiceGain };
       audioContextRef.current = context;
       destinationRef.current = destination;
     }
@@ -92,6 +98,11 @@ export function useAudioMixer() {
             ...prev,
             [slot]: { ...prev[slot], playing: false }
           }));
+          setLastEnded({
+            slot,
+            url: element.src || "",
+            at: Date.now()
+          });
         });
       }
       element.src = url;
@@ -159,26 +170,40 @@ export function useAudioMixer() {
   const playTrack = useCallback(
     async (slot, url) => {
       try {
-        if (!url) return;
+        if (!url) return false;
         const context = ensureContext();
         if (context.state !== "running") {
           await context.resume();
         }
 
         const element = attachAudioElement(slot, url);
-        if (!element) return;
+        if (!element) return false;
 
+        element.currentTime = 0;
+        element.load();
         await element.play();
         setTracks((prev) => ({
           ...prev,
           [slot]: { ...prev[slot], url, playing: true }
         }));
+        return true;
       } catch (err) {
         setError("Falha ao tocar a faixa.");
+        return false;
       }
     },
     [attachAudioElement, ensureContext]
   );
+
+  const stopTrack = useCallback((slot) => {
+    const element = audioElementsRef.current[slot];
+    if (!element) return;
+    element.pause();
+    setTracks((prev) => ({
+      ...prev,
+      [slot]: { ...prev[slot], playing: false }
+    }));
+  }, []);
 
   const seekTrack = useCallback((slot, time) => {
     const element = audioElementsRef.current[slot];
@@ -267,11 +292,58 @@ export function useAudioMixer() {
     setBroadcasting(false);
   }, []);
 
+  const playOneShot = useCallback(
+    async (url, gain = 1) => {
+      try {
+        if (!url) return;
+        const context = ensureContext();
+        if (context.state !== "running") {
+          await context.resume();
+        }
+
+        if (ttsElementRef.current) {
+          ttsElementRef.current.pause();
+          ttsElementRef.current.src = "";
+          ttsElementRef.current = null;
+        }
+
+        const element = new Audio();
+        element.crossOrigin = "anonymous";
+        const source = context.createMediaElementSource(element);
+        if (gainsRef.current.voice) {
+          gainsRef.current.voice.gain.value = gain;
+          source.connect(gainsRef.current.voice);
+        }
+
+        const finished = new Promise((resolve) => {
+          element.addEventListener("ended", () => {
+            element.src = "";
+            resolve(true);
+          });
+        });
+
+        element.src = url;
+        await element.play();
+        ttsElementRef.current = element;
+        await finished;
+      } catch (err) {
+        setError("Falha ao reproduzir o locutor IA.");
+        throw err;
+      }
+    },
+    [ensureContext]
+  );
+
   useEffect(() => {
     setReady(true);
     return () => {
       stopBroadcast();
       micStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (ttsElementRef.current) {
+        ttsElementRef.current.pause();
+        ttsElementRef.current.src = "";
+        ttsElementRef.current = null;
+      }
       audioContextRef.current?.close();
     };
   }, [stopBroadcast]);
@@ -288,7 +360,10 @@ export function useAudioMixer() {
     setTrackGain,
     seekTrack,
     playTrack,
+    stopTrack,
+    playOneShot,
     startBroadcast,
-    stopBroadcast
+    stopBroadcast,
+    lastEnded
   };
 }
